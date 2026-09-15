@@ -8,11 +8,11 @@ import {ingest,drain,now,type AppEnv} from '../src/meta';
 import {seal} from '../src/core';
 
 test('D1 real: autenticação, licença, deduplicação, fila e pausa',async()=>{
- const mf=new Miniflare(convertV4MiniflareOptions({modules:true,script:'export default {fetch(){return new Response("ok")}}',compatibilityDate:'2026-09-15',d1Databases:['DB'],bindings:{APP_KEY:'test-key',ADMIN_PASSWORD:'test-password',GRAPH_VERSION:'v25.0',LICENSE_SERVER_URL:'https://license.example'}}));
+ const mf=new Miniflare(convertV4MiniflareOptions({modules:true,script:'export default {fetch(){return new Response("ok")}}',compatibilityDate:'2026-09-15',d1Databases:['DB'],bindings:{LICENSE_ENFORCEMENT:'enabled',APP_KEY:'test-key',ADMIN_PASSWORD:'test-password',GRAPH_VERSION:'v25.0',LICENSE_SERVER_URL:'https://license.example'}}));
  const oldFetch=globalThis.fetch;
  try{
   const env=await mf.getBindings<AppEnv>();
-  for(const sql of readFileSync('migrations/0001_initial.sql','utf8').split(';').map(s=>s.trim()).filter(Boolean))await env.DB.prepare(sql).run();
+  for(const sql of (readFileSync('migrations/0001_initial.sql','utf8')+';'+readFileSync('migrations/0002_conversations.sql','utf8')+';'+readFileSync('migrations/0003_profiles.sql','utf8')).split(';').map(s=>s.trim()).filter(Boolean))await env.DB.prepare(sql).run();
   const pending:Promise<unknown>[]=[];const ctx={waitUntil(p:Promise<unknown>){pending.push(p);},passThroughOnException(){},props:{},exports:{}} as ExecutionContext;
   const request=(path:string,options:RequestInit={})=>worker.fetch(new Request('https://test.example'+path,options),env,ctx);
   assert.equal((await request('/api/status')).status,401);
@@ -31,6 +31,7 @@ test('D1 real: autenticação, licença, deduplicação, fila e pausa',async()=>
   const saved=await api('/api/rules',rule);assert.equal(saved.status,200);const {id}=await saved.json() as {id:string};
   const event=(cid:string,text='Quero!',from='222',mediaId='888',time=now())=>({object:'instagram',entry:[{id:'12345',time,changes:[{field:'comments',value:{id:cid,text,from:{id:from},media:{id:mediaId}}}]}]});
   await Promise.all([ingest(env,event('c1')),ingest(env,event('c1'))]);
+  const activityEvents=await env.DB.prepare("SELECT detail FROM events WHERE kind='comment'").all<{detail:string}>();assert.equal(activityEvents.results.length,1);assert.equal(JSON.parse(activityEvents.results[0].detail).text,'Quero!');assert.equal(JSON.parse(activityEvents.results[0].detail).userId,'222');
   assert.equal((await env.DB.prepare('SELECT count(*) n FROM jobs').first<{n:number}>())?.n,2);
   await ingest(env,event('self','quero','12345'));await ingest(env,event('other','quero','222','777'));await ingest(env,event('old','quero','222','888',now()-8*86400));
   assert.equal((await env.DB.prepare('SELECT count(*) n FROM jobs').first<{n:number}>())?.n,2);
