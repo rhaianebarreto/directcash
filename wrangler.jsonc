@@ -4,7 +4,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-09-15",
   "compatibility_flags": [
-    "nodejs_compat"
+    "nodejs_compat",
+    "global_fetch_strictly_public"
   ],
   "workers_dev": true,
   "assets": {
@@ -31,7 +32,8 @@
   },
   "vars": {
     "GRAPH_VERSION": "v25.0",
-    "LICENSE_SERVER_URL": "https://livecash-license-server.suporterhaianebarreto.workers.dev"
+    "LICENSE_SERVER_URL": "https://livecash-license-server.suporterhaianebarreto.workers.dev",
+    "LICENSE_ENFORCEMENT": "enabled"
   },
   "observability": {
     "enabled": true,
