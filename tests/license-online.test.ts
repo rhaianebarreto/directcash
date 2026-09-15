@@ -4,7 +4,7 @@ import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 import {activateLicense,licenseFor} from '../src/license';
 import type {AppEnv} from '../src/meta';
 test('cache de cinco minutos e bloqueio após revogação ou indisponibilidade',async()=>{
- const mf=new Miniflare(convertV4MiniflareOptions({modules:true,script:'export default {fetch(){return new Response("ok")}}',compatibilityDate:'2026-09-15',d1Databases:['DB'],bindings:{APP_KEY:'test-key',ADMIN_PASSWORD:'test-password',GRAPH_VERSION:'v25.0',LICENSE_SERVER_URL:'https://license.example'}}));
+ const mf=new Miniflare(convertV4MiniflareOptions({modules:true,script:'export default {fetch(){return new Response("ok")}}',compatibilityDate:'2026-09-15',d1Databases:['DB'],bindings:{LICENSE_ENFORCEMENT:'enabled',APP_KEY:'test-key',ADMIN_PASSWORD:'test-password',GRAPH_VERSION:'v25.0',LICENSE_SERVER_URL:'https://license.example'}}));
  const old=globalThis.fetch;
  try{
   const env=await mf.getBindings<AppEnv>();await env.DB.prepare('CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT)').run();
