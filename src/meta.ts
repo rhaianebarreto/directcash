@@ -1,6 +1,8 @@
+import {readFlow,keywordMatches} from './flow';
+import {queueInput,processInputs} from './conversations';
 import { boundedText, matches, seal, unseal, type Rule } from './core';
 import {licenseFor} from './license';
-export type AppEnv=Env & {ADMIN_PASSWORD:string;APP_KEY:string};
+export type AppEnv=Env & {ADMIN_PASSWORD:string;APP_KEY:string;TEST_ACCESS_UNTIL?:string;LICENSE_ENFORCEMENT?:string;ROOT_DB?:D1Database;PROFILE_ID?:string};
 export type Account={id:string;username:string;token:string;expires:number;refreshed:number};
 export type Settings={appId:string;appSecret:string;verifyToken:string;contact:string;owner:string};
 export const now=()=>Math.floor(Date.now()/1000);
@@ -15,6 +17,10 @@ export async function meta(url:string,init:RequestInit={}) {
   return data;
 }
 export async function graph(env:AppEnv,a:Account,path:string,body?:unknown){return meta(`https://graph.instagram.com/${env.GRAPH_VERSION}/${path}`,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+await unseal(a.token,env.APP_KEY),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});}
+async function recordInteraction(env:AppEnv,kind:string,id:string,userId:string,text:string,created:number,username=''){
+ const detail=JSON.stringify({eventId:id,userId,username:username.slice(0,100),text:text.slice(0,2000)});
+ await env.DB.prepare('INSERT INTO events(kind,detail,created) SELECT ?,?,? WHERE NOT EXISTS(SELECT 1 FROM events WHERE kind=? AND detail=?)').bind(kind,detail,created,kind,detail).run();
+}
 export async function ingest(env:AppEnv, payload:{object?:string;entry?:Entry[]}) {
   if(payload.object!=='instagram')return;
   const a=await account(env);if(!a||!await licenseFor(env,a.id))return;
@@ -26,40 +32,48 @@ export async function ingest(env:AppEnv, payload:{object?:string;entry?:Entry[]}
       const c=change.value;
       if(!c?.id||!c.from?.id||c.from.id===a.id||c.parent_id||c.media?.media_product_type==='LIVE')continue;
       const created=Number(entry.time);if(!Number.isFinite(created)||created>now()+300||now()-created>7*86400)continue;
-      const r=rules.find(r=>r.trigger==='comment'&&r.media_id===c.media?.id&&matches(c.text||'',r.keywords));
-      if(r)await enqueue(env,a,r,'private',c.id,created+7*86400,'comment:'+c.id);
+      await recordInteraction(env,'comment','comment:'+c.id,c.from.id,c.text||'',created,c.from.username||'');
+      const r=rules.find(r=>r.trigger==='comment'&&(readFlow(r)?.allPosts||r.media_id===c.media?.id)&&keywordMatches(c.text||'',r.keywords,readFlow(r)?.match));
+      if(r){if(readFlow(r))await queueInput(env,a,'comment:'+c.id,c.from.id,r.id,'start',{comment:c.id},created,created+7*86400);else await enqueue(env,a,r,'private',c.id,created+7*86400,'comment:'+c.id);}
     }
     for(const m of (entry.messaging||[]).slice(0,100)){
-      if(!m.sender?.id||m.sender.id===a.id||m.message?.is_echo||!m.message?.mid||!m.message.text)continue;
+      if(!m.sender?.id||m.sender.id===a.id||m.message?.is_echo||!m.message?.mid||(!m.message.text&&!m.message.quick_reply?.payload))continue;
       const created=Math.floor(Number(m.timestamp)/1000);if(!Number.isFinite(created)||created>now()+300||now()-created>86400)continue;
-      const r=rules.find(r=>r.trigger==='dm'&&matches(m.message!.text!,r.keywords));
-      if(r)await enqueue(env,a,r,'dm',m.sender.id,created+86400,'dm:'+m.message.mid);
+      const quick=m.message.quick_reply?.payload;
+      await recordInteraction(env,quick?'button':m.message.reply_to?.story?'story':'dm','dm:'+m.message.mid,m.sender.id,m.message.text||'',created);
+      const conversation=await env.DB.prepare("SELECT id FROM conversations WHERE account_id=? AND user_id=? AND stage<>'done' AND expires>? LIMIT 1").bind(a.id,m.sender.id,now()).first();
+      if(quick||conversation){await queueInput(env,a,'dm:'+m.message.mid,m.sender.id,'','reply',{text:m.message.text||'',quick:quick||''},created,created+86400);continue;}
+      const trigger=m.message.reply_to?.story?'story':'dm';
+      const r=rules.find(r=>r.trigger===trigger&&keywordMatches(m.message!.text||'',r.keywords,readFlow(r)?.match));
+      if(r){if(readFlow(r))await queueInput(env,a,'dm:'+m.message.mid,m.sender.id,r.id,'start',{},created,created+86400);else await enqueue(env,a,r,'dm',m.sender.id,created+86400,'dm:'+m.message.mid);}
     }
   }
   await env.DB.prepare("INSERT INTO settings(key,value) VALUES('last_webhook',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(String(now())).run();
 }
-type Entry={id?:string;time?:number;changes?:{field?:string;value?:{id?:string;text?:string;from?:{id?:string};parent_id?:string;media?:{id?:string;media_product_type?:string}}}[];messaging?:{sender?:{id?:string};timestamp?:number;message?:{mid?:string;text?:string;is_echo?:boolean}}[]};
+type Entry={id?:string;time?:number;changes?:{field?:string;value?:{id?:string;text?:string;from?:{id?:string;username?:string};parent_id?:string;media?:{id?:string;media_product_type?:string}}}[];messaging?:{sender?:{id?:string};timestamp?:number;message?:{mid?:string;text?:string;is_echo?:boolean;quick_reply?:{payload?:string};reply_to?:{story?:{id?:string;url?:string}}}}[]};
 async function enqueue(env:AppEnv,a:Account,r:Rule,kind:string,recipient:string,expires:number,id:string){
   const statements=[env.DB.prepare('INSERT OR IGNORE INTO jobs(id,account_id,rule_id,recipient,kind,text,created,expires,updated) VALUES(?,?,?,?,?,?,?,?,?)').bind(id,a.id,r.id,recipient,kind,r.message+'\n\n'+r.link,now(),expires,now())];
   if(kind==='private'&&r.public_reply)statements.push(env.DB.prepare('INSERT OR IGNORE INTO jobs(id,account_id,rule_id,recipient,kind,text,parent,created,expires,updated) VALUES(?,?,?,?,?,?,?,?,?,?)').bind(id+':public',a.id,r.id,recipient,'public',r.public_reply,id,now(),expires,now()));
   await env.DB.batch(statements);
 }
-type Job={id:string;account_id:string;rule_id:string;recipient:string;kind:string;text:string;parent:string|null;expires:number};
+type Job={id:string;account_id:string;rule_id:string;recipient:string;kind:string;text:string;parent:string|null;expires:number;payload?:string};
 export async function drain(env:AppEnv){
   const a=await account(env);if(!a||!await licenseFor(env,a.id))return;
+  const deadline=now()+18;await processInputs(env,a,deadline);
   // Never automatically retry a send with an unknown result: Meta has no idempotency key.
   await env.DB.prepare("UPDATE jobs SET status='uncertain',detail='Envio interrompido. Confira o Instagram antes de reenviar.',updated=? WHERE status='sending' AND updated<?").bind(now(),now()-180).run();
   await env.DB.prepare("UPDATE jobs SET status='expired',detail='Prazo de resposta encerrado.',updated=? WHERE status='pending' AND expires<=?").bind(now(),now()).run();
   await env.DB.prepare("UPDATE jobs SET status='cancelled',detail='Automação pausada, excluída ou conta desconectada.',updated=? WHERE status='pending' AND (account_id<>? OR rule_id NOT IN (SELECT id FROM rules WHERE active=1))").bind(now(),a.id).run();
   const count=await env.DB.prepare("SELECT count(*) n FROM jobs WHERE updated>? AND status IN ('sent','sending','uncertain')").bind(now()-3600).first<{n:number}>();
   if((count?.n||0)>=60)return; // Conservative local cap, not a claim about Meta's platform quota.
-  for(let i=0;i<Math.min(4,60-(count?.n||0));i++){
+  for(let i=0;i<Math.min(12,60-(count?.n||0))&&now()<deadline;i++){
     const job=await env.DB.prepare("UPDATE jobs SET status='sending',updated=? WHERE id=(SELECT id FROM jobs WHERE status='pending' AND expires>? AND (parent IS NULL OR parent IN (SELECT id FROM jobs WHERE status='sent')) ORDER BY created,id LIMIT 1) AND status='pending' RETURNING *").bind(now(),now()).first<Job>();
     if(!job)break;
     try{
       if(job.kind==='public')await graph(env,a,encodeURIComponent(job.recipient)+'/replies',{message:job.text});
-      else await graph(env,a,a.id+'/messages',{recipient:job.kind==='private'?{comment_id:job.recipient}:{id:job.recipient},message:{text:job.text}});
+      else await graph(env,a,a.id+'/messages',{recipient:job.kind==='private'?{comment_id:job.recipient}:{id:job.recipient},message:job.payload?JSON.parse(job.payload):{text:job.text}});
       await env.DB.prepare("UPDATE jobs SET status='sent',detail='Aceito pela API da Meta.',updated=? WHERE id=?").bind(now(),job.id).run();
+      await processInputs(env,a,deadline).catch(()=>{});
     }catch(e){
       const known=e instanceof MetaError&&e.status>=400&&e.status<500;
       const status=known?'failed':'uncertain';
@@ -76,6 +90,7 @@ export async function maintenance(env:AppEnv){
   }
   await env.DB.batch([
     env.DB.prepare('DELETE FROM sessions WHERE expires<?').bind(now()),env.DB.prepare('DELETE FROM oauth WHERE expires<?').bind(now()),env.DB.prepare('DELETE FROM attempts WHERE expires<?').bind(now()),
+    env.DB.prepare('DELETE FROM conversations WHERE expires<?').bind(now()-86400),env.DB.prepare('DELETE FROM flow_inputs WHERE created<?').bind(now()-30*86400),
     env.DB.prepare('DELETE FROM events WHERE created<?').bind(now()-30*86400),
     env.DB.prepare("DELETE FROM jobs WHERE created<? AND status<>'pending' AND status<>'sending'").bind(now()-30*86400)
   ]);
