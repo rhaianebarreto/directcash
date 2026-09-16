@@ -19,3 +19,4 @@ As migrações são aplicadas por `npm run deploy`. Preserve os bindings, o banc
 Node 22 ou superior. Execute `npm ci`, `npm run check` e `npm test`. Para desenvolvimento local, configure segredos fictícios em .dev.vars (nunca publicar esse arquivo). O wrangler.jsonc distribuído contém um ID de banco placeholder para novas instalações.
 
 A Atividade usa “Aceito pela Meta” para confirmação da API, sem prometer entrega ou leitura. Interações anteriores não registradas não são recuperadas. Faça um teste real com outra conta antes de distribuir.
+Reconectado ao Cloudflare.
