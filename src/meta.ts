@@ -1,4 +1,4 @@
-import {readFlow,keywordMatches} from './flow';
+import {readFlow,keywordMatches,hasChannel} from './flow';
 import {queueInput,processInputs} from './conversations';
 import { boundedText, matches, seal, unseal, type Rule } from './core';
 import {licenseFor} from './license';
@@ -33,7 +33,7 @@ export async function ingest(env:AppEnv, payload:{object?:string;entry?:Entry[]}
       if(!c?.id||!c.from?.id||c.from.id===a.id||c.parent_id||c.media?.media_product_type==='LIVE')continue;
       const created=Number(entry.time);if(!Number.isFinite(created)||created>now()+300||now()-created>7*86400)continue;
       await recordInteraction(env,'comment','comment:'+c.id,c.from.id,c.text||'',created,c.from.username||'');
-      const r=rules.find(r=>r.trigger==='comment'&&(readFlow(r)?.allPosts||r.media_id===c.media?.id)&&keywordMatches(c.text||'',r.keywords,readFlow(r)?.match));
+      const r=rules.find(r=>hasChannel(r,'comment')&&(readFlow(r)?.allPosts||r.media_id===c.media?.id)&&keywordMatches(c.text||'',r.keywords,readFlow(r)?.match));
       if(r){if(readFlow(r))await queueInput(env,a,'comment:'+c.id,c.from.id,r.id,'start',{comment:c.id},created,created+7*86400);else await enqueue(env,a,r,'private',c.id,created+7*86400,'comment:'+c.id);}
     }
     for(const m of (entry.messaging||[]).slice(0,100)){
@@ -44,7 +44,7 @@ export async function ingest(env:AppEnv, payload:{object?:string;entry?:Entry[]}
       const conversation=await env.DB.prepare("SELECT id FROM conversations WHERE account_id=? AND user_id=? AND stage<>'done' AND expires>? LIMIT 1").bind(a.id,m.sender.id,now()).first();
       if(quick||conversation){await queueInput(env,a,'dm:'+m.message.mid,m.sender.id,'','reply',{text:m.message.text||'',quick:quick||''},created,created+86400);continue;}
       const trigger=m.message.reply_to?.story?'story':'dm';
-      const r=rules.find(r=>r.trigger===trigger&&keywordMatches(m.message!.text||'',r.keywords,readFlow(r)?.match));
+      const r=rules.find(r=>hasChannel(r,trigger)&&(trigger!=='story'||!readFlow(r)?.storyId||readFlow(r)?.storyId===m.message?.reply_to?.story?.id)&&keywordMatches(m.message!.text||'',r.keywords,readFlow(r)?.match));
       if(r){if(readFlow(r))await queueInput(env,a,'dm:'+m.message.mid,m.sender.id,r.id,'start',{},created,created+86400);else await enqueue(env,a,r,'dm',m.sender.id,created+86400,'dm:'+m.message.mid);}
     }
   }

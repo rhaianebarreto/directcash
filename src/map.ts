@@ -1,5 +1,5 @@
 export type Part={type:'text'|'image'|'audio'|'video'|'delay';text:string;url:string;seconds:number};
-export type Node={id:string;type:'message'|'carousel'|'wait'|'email'|'follow'|'tag';text:string;next:string;choices:{title:string;next:string}[];minutes:number;url:string;label:string;mediaType:''|'image'|'audio'|'video';mediaUrl:string;tag:string;parts?:Part[];seconds?:number;cards?:{title:string;subtitle:string;image:string;buttons:{title:string;url:string}[]}[];x:number;y:number};
+export type Node={id:string;type:'message'|'carousel'|'wait'|'email'|'follow'|'tag';text:string;next:string;choices:{title:string;next:string}[];minutes:number;url:string;label:string;mediaType:''|'image'|'audio'|'video';mediaUrl:string;tag:string;links?:{title:string;url:string}[];parts?:Part[];seconds?:number;cards?:{title:string;subtitle:string;image:string;buttons:{title:string;url:string}[]}[];x:number;y:number};
 export type MapFlow={start:string;nodes:Node[]};
 export function validateMap(input:any):MapFlow{
  if(!input||!Array.isArray(input.nodes)||!input.nodes.length||input.nodes.length>30)throw Error('Use de 1 a 30 blocos no fluxo.');
@@ -11,10 +11,11 @@ export function validateMap(input:any):MapFlow{
   const valid=(v:string)=>{try{const u=new URL(v);return u.protocol==='https:'&&!u.username&&!u.password;}catch{return false;}};
   if(url&&!valid(url)||!['','image','audio','video'].includes(mediaType)||mediaType&&!valid(mediaUrl))throw Error('Use links HTTPS válidos nos blocos.');
   const choices=(b.choices??[]);if(!Array.isArray(choices)||choices.length>3)throw Error('Use até 3 opções por mensagem.');
-  const parsed=choices.map((c:any)=>{if(typeof c.title!=='string'||!c.title.trim()||c.title.length>20||typeof c.next!=='string'||!c.next)throw Error('Preencha o texto e o destino das opções.');return {title:c.title.trim(),next:c.next};});
+  const parsed=choices.map((c:any)=>{if(typeof c.title!=='string'||!c.title.trim()||c.title.length>20||typeof c.next!=='string'||c.next.length>40)throw Error('Preencha o texto e o destino das opções.');return {title:c.title.trim(),next:c.next};});
+  const links=b.links??[];if(!Array.isArray(links)||links.length>3||links.some((l:any)=>typeof l.title!=='string'||!l.title.trim()||l.title.length>20||!valid(l.url)))throw Error('Use até 3 botões com título e link HTTPS.');if(links.length&&(type!=='message'||url||mediaType||parsed.length||b.parts?.length))throw Error('Use botões de link em uma mensagem de texto separada.');
   if(parsed.length&&next)throw Error('Use os destinos das opções, sem uma segunda saída no mesmo bloco.');
   if(parsed.length&&(type!=='message'||url||mediaType))throw Error('Use opções de resposta em uma mensagem de texto sem link ou mídia.');
-  const minutes=Number(b.minutes??60);if(type==='wait'&&(!Number.isInteger(minutes)||minutes<1||minutes>1380))throw Error('A espera deve ter de 1 a 1380 minutos.');
+  const minutes=Number(b.minutes??60),seconds=b.seconds===undefined?undefined:Number(b.seconds);if(type==='wait'&&(seconds!==undefined?(!Number.isInteger(seconds)||seconds<1||seconds>82800):(!Number.isInteger(minutes)||minutes<1||minutes>1380)))throw Error('Use de 1 a 82.800 segundos ou de 1 a 1.380 minutos.');
   const tag=s('tag',40);if(type==='tag'&&!tag)throw Error('Dê um nome à etiqueta.');
   if(mediaType&&url)throw Error('Separe mídia e botão de link em dois blocos.');
   let cards:Node['cards'];if(type==='carousel'){
@@ -23,7 +24,7 @@ export function validateMap(input:any):MapFlow{
     const buttons=c.buttons.map((v:any)=>{if(typeof v.title!=='string'||!v.title.trim()||v.title.length>20||!valid(v.url))throw Error('Confira os botões do catálogo.');return {title:v.title.trim(),url:v.url};});return {title:c.title.trim(),subtitle:c.subtitle,image:c.image,buttons};});
   }
   let parts:Part[]=[];if(b.parts){if(!Array.isArray(b.parts)||(b.parts.length&&type!=='message')||b.parts.length>12)throw Error('Use até 12 conteúdos adicionais por mensagem.');parts=b.parts.map((p:any)=>{if(!['text','image','audio','video','delay'].includes(p.type))throw Error('Conteúdo inválido.');const text=typeof p.text==='string'?p.text.trim():'',url=typeof p.url==='string'?p.url:'';const seconds=Number(p.seconds||3);if(p.type==='text'&&(!text||text.length>600)||['image','audio','video'].includes(p.type)&&!valid(url)||p.type==='delay'&&(!Number.isInteger(seconds)||seconds<1||seconds>10))throw Error('Confira os conteúdos; pausas curtas devem ter entre 1 e 10 segundos.');return {type:p.type,text,url,seconds};});}
-  return {parts,cards,id,type:type as Node['type'],text,next,choices:parsed,minutes,url,label:s('label',20)||'Abrir link',mediaType:mediaType as Node['mediaType'],mediaUrl,tag,x:Math.max(0,Math.min(4000,Number(b.x)||0)),y:Math.max(0,Math.min(4000,Number(b.y)||0))};
+  return {links:links.map((l:any)=>({title:l.title.trim(),url:l.url})),parts,cards,id,type:type as Node['type'],text,next,choices:parsed,minutes,seconds,url,label:s('label',20)||'Abrir link',mediaType:mediaType as Node['mediaType'],mediaUrl,tag,x:Math.max(0,Math.min(4000,Number(b.x)||0)),y:Math.max(0,Math.min(4000,Number(b.y)||0))};
  });
  const ids=new Set(nodes.map(n=>n.id));if(ids.size!==nodes.length||!ids.has(input.start))throw Error('Escolha um bloco inicial válido.');
  const visiting=new Set<string>(),seen=new Set<string>();function visit(id:string){if(!id)return;if(!ids.has(id))throw Error('Há uma conexão apontando para um bloco removido.');if(visiting.has(id))throw Error('O fluxo não pode voltar a um bloco anterior.');if(seen.has(id))return;visiting.add(id);const n=nodes.find(n=>n.id===id)!;visit(n.next);n.choices.forEach(c=>visit(c.next));visiting.delete(id);seen.add(id);}visit(input.start);

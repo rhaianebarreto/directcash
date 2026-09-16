@@ -88,9 +88,10 @@ async function plan(env:AppEnv,a:Account,input:Input,deadline:number){
   else if(n.type==='message'){
    const text=fillVariables(n.text,cfg.name);let message:Record<string,unknown>;
    if(n.choices.length)message={text,quick_replies:n.choices.map((ch,index)=>({content_type:'text',title:ch.title,payload:'dc:'+c!.id+':'+n.id+':'+index}))};
+   else if(n.links?.length)message={attachment:{type:'template',payload:{template_type:'button',text,buttons:n.links.map(l=>({type:'web_url',url:l.url,title:l.title}))}}};
    else if(n.mediaType)message={attachment:{type:n.mediaType,payload:{url:n.mediaUrl}}};else message=textMessage(text,n.url,n.label);
    send(message,n.choices.length?'choice':cfg.engaged?'run':'done');
-  }else if(n.type==='wait'){if(n.seconds){if(now()+n.seconds>deadline){cfg.step++;cfg.wake=now()+n.seconds;c.stage='wait';break;}await new Promise(resolve=>setTimeout(resolve,n.seconds!*1000));if(now()>=c.expires){c.stage='done';break;}cfg.node=n.next;continue;}cfg.step++;cfg.wake=now()+n.minutes*60;c.stage=cfg.wake<c.expires?'wait':'done';}
+  }else if(n.type==='wait'){if(n.seconds){if(n.seconds>10||now()+n.seconds>deadline){cfg.step++;cfg.wake=now()+n.seconds;c.stage='wait';break;}await new Promise(resolve=>setTimeout(resolve,n.seconds!*1000));if(now()>=c.expires){c.stage='done';break;}cfg.node=n.next;continue;}cfg.step++;cfg.wake=now()+n.minutes*60;c.stage=cfg.wake<c.expires?'wait':'done';}
   else if(n.type==='email'){send({text:fillVariables(n.text,cfg.name)},'email');}
   else if(n.type==='follow'){
    const profile=await graph(env,a,encodeURIComponent(c.user_id)+'?fields=is_user_follow_business');

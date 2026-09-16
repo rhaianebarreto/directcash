@@ -102,6 +102,10 @@ async function handle(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Respo
     const after=url.searchParams.get('after')||'';if(after.length>1000)return json({},400);
     try{const data=await graph(env,a,`${a.id}/media?fields=id,caption,permalink,media_type,media_url,thumbnail_url&limit=25${after?'&after='+encodeURIComponent(after):''}`);return json({data:data.data||[],after:data.paging?.next?data.paging?.cursors?.after:null});}catch{return json({error:'Não foi possível listar os posts. Confira a conexão.'},400);}
   }
+  if(path==='/api/stories'&&req.method==='GET'){
+    const a=await account(env);if(!a)return json({error:'Conecte o Instagram primeiro.'},400);
+    try{const data=await graph(env,a,`${a.id}/stories?fields=id,media_type,media_url,thumbnail_url,timestamp&limit=100`);return json({data:data.data||[]});}catch{return json({error:'Não foi possível listar os stories. Confira a conexão e se há stories ativos.'},400);}
+  }
   if(path==='/api/rules'&&req.method==='GET')return json((await env.DB.prepare('SELECT * FROM rules ORDER BY created DESC').all()).results);
   if(path==='/api/rules'&&req.method==='POST'){
     let r;const b=await body(req);try{r=validateRule(b);}catch(e){return json({error:(e as Error).message},400);}
