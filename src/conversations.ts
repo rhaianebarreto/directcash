@@ -63,6 +63,8 @@ async function plan(env:AppEnv,a:Account,input:Input,deadline:number){
    if(c.stage==='choice'){
     const prefix='dc:'+c.id+':'+cfg.node+':';if(typeof data.quick!=='string'||!data.quick.startsWith(prefix)){await finish().run();return;}
     const choice=node?.choices[Number(data.quick.slice(prefix.length))];if(!choice){await finish().run();return;}cfg.node=choice.next;c.stage='run';
+   }else if(c.stage==='engagement'){
+    cfg.node=node?.next||'';c.stage='run';
    }else if(c.stage==='follow'){
     if(data.quick!=='dc:'+c.id+':'+cfg.node+':follow'){await finish().run();return;}c.stage='run';
    }else if(c.stage==='email'){
@@ -90,8 +92,9 @@ async function plan(env:AppEnv,a:Account,input:Input,deadline:number){
    const text=fillVariables(n.text,cfg.name);let message:Record<string,unknown>;
    if(n.choices.length)message={text,quick_replies:n.choices.map((ch,index)=>({content_type:'text',title:ch.title,payload:'dc:'+c!.id+':'+n.id+':'+index}))};
    else if(n.links?.length)message={attachment:{type:'template',payload:{template_type:'button',text,buttons:n.links.map(l=>({type:'web_url',url:l.url,title:l.title}))}}};
+   else if(n.mediaType==='file')message={text:(n.fileName||'Baixar documento')+'\n'+n.mediaUrl};
    else if(n.mediaType)message={attachment:{type:n.mediaType,payload:{url:n.mediaUrl}}};else message=textMessage(text,n.url,n.label);
-   send(message,n.choices.length?'choice':cfg.engaged?'run':'done');
+   send(message,n.choices.length?'choice':cfg.engaged?'run':n.next?'engagement':'done');
   }else if(n.type==='wait'){if(n.seconds){if(env.FLOW_SCHEDULER||n.seconds>10||now()+n.seconds>deadline){cfg.step++;cfg.wake=now()+n.seconds;c.stage='wait';break;}await new Promise(resolve=>setTimeout(resolve,n.seconds!*1000));if(now()>=c.expires){c.stage='done';break;}cfg.node=n.next;continue;}cfg.step++;cfg.wake=now()+n.minutes*60;c.stage=cfg.wake<c.expires?'wait':'done';}
   else if(n.type==='email'){send({text:fillVariables(n.text,cfg.name)},'email');}
   else if(n.type==='follow'){
