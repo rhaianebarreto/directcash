@@ -15,7 +15,7 @@ test('multiple channels persist and legacy rules retain their channel',()=>{
  assert.throws(()=>validateFlow({version:1,storyId:'https://bad'}));
  const base={name:'Teste',trigger:'dm',media_id:'',keywords:'',message:'Olá',link:'https://example.com',public_reply:'Enviado',active:false,flow};
  assert.equal(validateRule(base).public_reply,'Enviado');
- assert.throws(()=>validateRule({...base,flow:{...flow,map:{start:'a',nodes:[{...block,next:'b'},{...block,id:'b'}]}}}),/comentário/);
+ assert.doesNotThrow(()=>validateRule({...base,flow:{...flow,map:{start:'a',nodes:[{...block,next:'b'},{...block,id:'b'}]}}}));
 });
 test('wait seconds survive validation; legacy minutes and bounds are enforced',()=>{
  for(const seconds of [1,10,45,82800])assert.equal(validateMap({start:'a',nodes:[{...block,type:'wait',seconds}]}).nodes[0].seconds,seconds);
