@@ -1,15 +1,15 @@
 {
   "name": "directcash",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
     "types": "wrangler types --strict-vars=false",
-    "check": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts",
+    "check": "wrangler types --strict-vars=false && tsc --noEmit",
+    "test": "wrangler deploy --dry-run --outdir build && tsx --test tests/*.test.ts",
     "install:guided": "node scripts/install.mjs",
-    "deploy": "npm run db:remote && wrangler deploy",
+    "deploy": "node scripts/update-config.mjs && npm run db:remote && wrangler deploy",
     "db:local": "wrangler d1 migrations apply DB --local",
     "db:remote": "wrangler d1 migrations apply DB --remote",
     "configure:browser": "node scripts/configure-browser.mjs"

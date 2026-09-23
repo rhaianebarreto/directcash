@@ -7,3 +7,5 @@ dist/
 
 ABRIR-MEU-PAINEL.html
 .install-secrets.json
+
+build/
