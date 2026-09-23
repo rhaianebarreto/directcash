@@ -1,3 +1,6 @@
+import {mediaFormat} from './media-format';
+
+
 import {profileEnv,profiles,scoped,registerProfile,publicProfiles} from './profiles';
 import {boundedText,digest,equal,seal,unseal,signatureValid,validateRule} from './core';
 import {account,settings,now,meta,graph,ingest,drain,maintenance,log,type AppEnv,type Settings} from './meta';
@@ -7,13 +10,17 @@ const cookie=(value:string,secure=true,max=86400)=>`dc_session=${value}; Path=/;
 async function session(req:Request,env:AppEnv){const value=req.headers.get('Cookie')?.match(/(?:^|; )dc_session=([^;]+)/)?.[1];if(!value)return null;const id=await digest(value);return await env.DB.prepare('SELECT id FROM sessions WHERE id=? AND expires>?').bind(id,now()).first<{id:string}>();}
 const profileCookie=(id:string)=>`dc_profile=${id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000; Secure`;
 const body=async(req:Request)=>JSON.parse(await boundedText(req,65536)) as Record<string,unknown>;
-function secure(response:Response){const r=new Response(response.body,response);r.headers.set('X-Content-Type-Options','nosniff');r.headers.set('Referrer-Policy','no-referrer');r.headers.set('X-Frame-Options','DENY');r.headers.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data:; connect-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'");return r;}
+function secure(response:Response){const r=new Response(response.body,response);r.headers.set('X-Content-Type-Options','nosniff');r.headers.set('Referrer-Policy','no-referrer');r.headers.set('X-Frame-Options','DENY');r.headers.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data:; connect-src 'self'; media-src 'self' https: blob:; frame-ancestors 'none'; form-action 'self'; base-uri 'none'");return r;}
 export default {
   async fetch(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Response>{try{const url=new URL(req.url);if(url.pathname!=='/webhook'){let id=req.headers.get('Cookie')?.match(/(?:^|; )dc_profile=([0-9]+)/)?.[1];if(url.pathname==='/oauth/callback'){const o=await env.DB.prepare('SELECT profile_id FROM oauth WHERE id=?').bind(await digest(url.searchParams.get('state')||'')).first<{profile_id:string}>();if(o)id=o.profile_id;}env=await profileEnv(env,id);}return secure(await handle(req,env,ctx));}catch(e){console.error(JSON.stringify({event:'request_failed',type:e instanceof Error?e.name:'unknown'}));return secure(json({error:'Não foi possível concluir. Confira a configuração e tente novamente.'},500));}},
   async scheduled(_event:ScheduledController,env:AppEnv,ctx:ExecutionContext){ctx.waitUntil((async()=>{const all=(await profiles(env)).results;if(!all.length)await maintenance(env);for(const p of all)await maintenance(scoped(env,p));})().catch(()=>console.error(JSON.stringify({event:'maintenance_failed'}))));}
 } satisfies ExportedHandler<AppEnv>;
 async function handle(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Response>{
   const url=new URL(req.url),path=url.pathname;
+  if(path.startsWith('/uploads/')){
+    const id=path.slice('/uploads/'.length);if(!/^[a-f0-9-]{36}\.(jpg|png|webp|mp4|m4a|mp3|wav|ogg)$/.test(id)||!['GET','HEAD'].includes(req.method)||!env.FLOW_MEDIA)return new Response(null,{status:404});
+    return env.FLOW_MEDIA.getByName(id).fetch(req);
+  }
   if(!path.startsWith('/api/')&&!path.startsWith('/oauth/')&&path!=='/webhook')return env.ASSETS.fetch(req);
   if(!env.APP_KEY||!env.ADMIN_PASSWORD)return json({error:'Instalação incompleta. Configure APP_KEY e ADMIN_PASSWORD nos segredos do Worker na Cloudflare ou conclua o instalador do computador.'},503);
   if(path==='/webhook'){
@@ -36,11 +43,21 @@ async function handle(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Respo
   }
   if(path==='/api/privacy'&&req.method==='GET'){const cfg=await settings(env);return json({owner:cfg?.owner||'Responsável por esta instalação',contact:cfg?.contact||'Contato ainda não configurado'});}
   const s=await session(req,env);if(!s)return json({error:'Entre no painel para continuar.'},401);
+  if(path==='/api/uploads'&&req.method==='POST'){
+    if(!env.FLOW_MEDIA)return json({error:'O armazenamento de anexos ainda não foi configurado nesta instalação.'},503);
+    const kind=url.searchParams.get('kind')||'',type=(req.headers.get('Content-Type')||'').split(';')[0],format=mediaFormat(type,kind);
+    if(!format)return json({error:'Formato de arquivo não suportado.'},415);
+    if(Number(req.headers.get('Content-Length'))>10*1024*1024)return json({error:'Use um arquivo de até 10 MB.'},413);
+    const id=crypto.randomUUID()+'.'+format.extension;
+    const result=await env.FLOW_MEDIA.getByName(id).fetch(new Request('https://media.internal/',{method:'PUT',headers:{'Content-Type':type},body:req.body}));
+    if(!result.ok)return json({error:await result.text()},result.status);
+    return json({url:url.origin+'/uploads/'+id,...await result.json() as object});
+  }
   if(path==='/api/profile-photo'&&req.method==='GET'){
     const a=await account(env);if(!a)return json({url:''});
     const cached=await env.DB.prepare("SELECT value FROM settings WHERE key='profile-photo'").first<{value:string}>();
-    if(cached){try{const p=JSON.parse(cached.value);if(p.until>now())return json({url:p.url});}catch{}}
-    try{const p=await graph(env,a,a.id+'?fields=profile_picture_url');const photo=typeof p.profile_picture_url==='string'&&p.profile_picture_url.startsWith('https://')?p.profile_picture_url:'';await env.DB.prepare("INSERT INTO settings(key,value) VALUES('profile-photo',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify({url:photo,until:now()+3600})).run();return json({url:photo});}catch{return json({url:''});}
+    let previousPhoto='';if(cached){try{const p=JSON.parse(cached.value);if(typeof p.url==='string'&&p.url.startsWith('https://'))previousPhoto=p.url;if(p.until>now()&&previousPhoto)return json({url:previousPhoto});}catch{}}
+    try{const p=await graph(env,a,a.id+'?fields=profile_picture_url');const photo=typeof p.profile_picture_url==='string'&&p.profile_picture_url.startsWith('https://')?p.profile_picture_url:previousPhoto;if(photo)await env.DB.prepare("INSERT INTO settings(key,value) VALUES('profile-photo',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify({url:photo,until:now()+(p.profile_picture_url?3600:60)})).run();return json({url:photo});}catch{return json({url:previousPhoto});}
   }
   if(path==='/api/profile'&&req.method==='POST'){const b=await body(req);const all=await publicProfiles(env);if(typeof b.id!=='string'||!all.some(a=>a.id===b.id))return json({error:'Perfil não encontrado.'},400);return new Response('{}',{headers:{'Content-Type':'application/json','Set-Cookie':profileCookie(b.id),'Cache-Control':'no-store'}});}
   if(path==='/api/logout'&&req.method==='POST'){await env.DB.prepare('DELETE FROM sessions WHERE id=?').bind(s.id).run();return new Response('{}',{headers:{'Set-Cookie':cookie('',url.protocol==='https:',0),'Cache-Control':'no-store'}});}
@@ -102,6 +119,10 @@ async function handle(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Respo
     const after=url.searchParams.get('after')||'';if(after.length>1000)return json({},400);
     try{const data=await graph(env,a,`${a.id}/media?fields=id,caption,permalink,media_type,media_url,thumbnail_url&limit=25${after?'&after='+encodeURIComponent(after):''}`);return json({data:data.data||[],after:data.paging?.next?data.paging?.cursors?.after:null});}catch{return json({error:'Não foi possível listar os posts. Confira a conexão.'},400);}
   }
+  if(path==='/api/stories'&&req.method==='GET'){
+    const a=await account(env);if(!a)return json({error:'Conecte o Instagram primeiro.'},400);
+    try{const data=await graph(env,a,`${a.id}/stories?fields=id,media_type,media_url,thumbnail_url,timestamp&limit=100`);return json({data:data.data||[]});}catch{return json({error:'Não foi possível listar os stories. Confira a conexão e se há stories ativos.'},400);}
+  }
   if(path==='/api/rules'&&req.method==='GET')return json((await env.DB.prepare('SELECT * FROM rules ORDER BY created DESC').all()).results);
   if(path==='/api/rules'&&req.method==='POST'){
     let r;const b=await body(req);try{r=validateRule(b);}catch(e){return json({error:(e as Error).message},400);}
@@ -118,3 +139,4 @@ async function handle(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Respo
   if(path==='/api/activity'&&req.method==='GET')return json({jobs:(await env.DB.prepare('SELECT j.id,j.kind,j.status,j.created,j.updated,j.detail,j.text,j.payload,j.recipient,COALESCE(c.user_id,j.recipient) AS user_id FROM jobs j LEFT JOIN conversations c ON c.id=j.conversation_id ORDER BY j.created DESC LIMIT 50').all()).results,events:(await env.DB.prepare('SELECT kind,detail,created FROM events ORDER BY created DESC,id DESC LIMIT 100').all()).results});
   return json({error:'Rota não encontrada.'},404);
 }
+

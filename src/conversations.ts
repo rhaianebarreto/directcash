@@ -1,3 +1,4 @@
+import {sendDelaySeconds} from './timing';
 import {type Rule} from './core';
 import {readFlow,fillVariables,emailValid,textMessage,quickMessage,type Flow} from './flow';
 import {type Node,type MapFlow} from './map';
@@ -77,7 +78,7 @@ async function plan(env:AppEnv,a:Account,input:Input,deadline:number){
  if(cfg.engaged&&!cfg.name){try{const p=await graph(env,a,encodeURIComponent(c.user_id)+'?fields=name');cfg.name=typeof p.name==='string'?p.name.slice(0,100):'';}catch{}}
  const send=(message:Record<string,unknown>,after:string)=>{
   cfg.step++;const id='flow:'+c!.id+':'+cfg.step;const privateReply=!!cfg.comment&&!cfg.engaged;
-  statements.push(env.DB.prepare('INSERT OR IGNORE INTO jobs(id,account_id,rule_id,recipient,kind,text,payload,created,expires,updated,conversation_id,phase) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,a.id,c!.rule_id,privateReply?cfg.comment:c!.user_id,privateReply?'private':'dm','',JSON.stringify(message),now(),c!.expires,now(),c!.id,cfg.node));
+  statements.push(env.DB.prepare('INSERT OR IGNORE INTO jobs(id,account_id,rule_id,recipient,kind,text,payload,created,expires,updated,conversation_id,phase,not_before) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,a.id,c!.rule_id,privateReply?cfg.comment:c!.user_id,privateReply?'private':'dm','',JSON.stringify(message),now(),c!.expires,now(),c!.id,cfg.node,now()+sendDelaySeconds(cfg.map.nodes.find(n=>n.id===cfg.node)!)));
   if(privateReply&&cfg.publicReply){const replies=cfg.publicReply.split('\n').map(s=>s.trim()).filter(Boolean);const reply=replies[Math.floor(Math.random()*replies.length)];if(reply)statements.push(env.DB.prepare('INSERT OR IGNORE INTO jobs(id,account_id,rule_id,recipient,kind,text,parent,created,expires,updated,conversation_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind(id+':public',a.id,c!.rule_id,cfg.comment,'public',fillVariables(reply,cfg.name),id,now(),c!.expires,now(),c!.id));}
   cfg.job=id;cfg.next=after;c!.stage='sending';
  };
@@ -88,9 +89,10 @@ async function plan(env:AppEnv,a:Account,input:Input,deadline:number){
   else if(n.type==='message'){
    const text=fillVariables(n.text,cfg.name);let message:Record<string,unknown>;
    if(n.choices.length)message={text,quick_replies:n.choices.map((ch,index)=>({content_type:'text',title:ch.title,payload:'dc:'+c!.id+':'+n.id+':'+index}))};
+   else if(n.links?.length)message={attachment:{type:'template',payload:{template_type:'button',text,buttons:n.links.map(l=>({type:'web_url',url:l.url,title:l.title}))}}};
    else if(n.mediaType)message={attachment:{type:n.mediaType,payload:{url:n.mediaUrl}}};else message=textMessage(text,n.url,n.label);
    send(message,n.choices.length?'choice':cfg.engaged?'run':'done');
-  }else if(n.type==='wait'){if(n.seconds){if(now()+n.seconds>deadline){cfg.step++;cfg.wake=now()+n.seconds;c.stage='wait';break;}await new Promise(resolve=>setTimeout(resolve,n.seconds!*1000));if(now()>=c.expires){c.stage='done';break;}cfg.node=n.next;continue;}cfg.step++;cfg.wake=now()+n.minutes*60;c.stage=cfg.wake<c.expires?'wait':'done';}
+  }else if(n.type==='wait'){if(n.seconds){if(env.FLOW_SCHEDULER||n.seconds>10||now()+n.seconds>deadline){cfg.step++;cfg.wake=now()+n.seconds;c.stage='wait';break;}await new Promise(resolve=>setTimeout(resolve,n.seconds!*1000));if(now()>=c.expires){c.stage='done';break;}cfg.node=n.next;continue;}cfg.step++;cfg.wake=now()+n.minutes*60;c.stage=cfg.wake<c.expires?'wait':'done';}
   else if(n.type==='email'){send({text:fillVariables(n.text,cfg.name)},'email');}
   else if(n.type==='follow'){
    const profile=await graph(env,a,encodeURIComponent(c.user_id)+'?fields=is_user_follow_business');

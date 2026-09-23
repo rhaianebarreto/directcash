@@ -1,8 +1,9 @@
-import {readFlow,keywordMatches} from './flow';
+import {schedulePending} from './scheduler-client';
+import {readFlow,keywordMatches,hasChannel} from './flow';
 import {queueInput,processInputs} from './conversations';
 import { boundedText, matches, seal, unseal, type Rule } from './core';
 import {licenseFor} from './license';
-export type AppEnv=Env & {ADMIN_PASSWORD:string;APP_KEY:string;TEST_ACCESS_UNTIL?:string;LICENSE_ENFORCEMENT?:string;ROOT_DB?:D1Database;PROFILE_ID?:string};
+export type AppEnv=Omit<Env,'FLOW_SCHEDULER'> & {FLOW_SCHEDULER?:DurableObjectNamespace<import('./scheduler').FlowScheduler>;ADMIN_PASSWORD:string;APP_KEY:string;TEST_ACCESS_UNTIL?:string;LICENSE_ENFORCEMENT?:string;ROOT_DB?:D1Database;PROFILE_ID?:string;IN_FLOW_ALARM?:boolean};
 export type Account={id:string;username:string;token:string;expires:number;refreshed:number};
 export type Settings={appId:string;appSecret:string;verifyToken:string;contact:string;owner:string};
 export const now=()=>Math.floor(Date.now()/1000);
@@ -33,7 +34,7 @@ export async function ingest(env:AppEnv, payload:{object?:string;entry?:Entry[]}
       if(!c?.id||!c.from?.id||c.from.id===a.id||c.parent_id||c.media?.media_product_type==='LIVE')continue;
       const created=Number(entry.time);if(!Number.isFinite(created)||created>now()+300||now()-created>7*86400)continue;
       await recordInteraction(env,'comment','comment:'+c.id,c.from.id,c.text||'',created,c.from.username||'');
-      const r=rules.find(r=>r.trigger==='comment'&&(readFlow(r)?.allPosts||r.media_id===c.media?.id)&&keywordMatches(c.text||'',r.keywords,readFlow(r)?.match));
+      const r=rules.find(r=>hasChannel(r,'comment')&&(readFlow(r)?.allPosts||r.media_id===c.media?.id)&&keywordMatches(c.text||'',r.keywords,readFlow(r)?.match));
       if(r){if(readFlow(r))await queueInput(env,a,'comment:'+c.id,c.from.id,r.id,'start',{comment:c.id},created,created+7*86400);else await enqueue(env,a,r,'private',c.id,created+7*86400,'comment:'+c.id);}
     }
     for(const m of (entry.messaging||[]).slice(0,100)){
@@ -44,7 +45,7 @@ export async function ingest(env:AppEnv, payload:{object?:string;entry?:Entry[]}
       const conversation=await env.DB.prepare("SELECT id FROM conversations WHERE account_id=? AND user_id=? AND stage<>'done' AND expires>? LIMIT 1").bind(a.id,m.sender.id,now()).first();
       if(quick||conversation){await queueInput(env,a,'dm:'+m.message.mid,m.sender.id,'','reply',{text:m.message.text||'',quick:quick||''},created,created+86400);continue;}
       const trigger=m.message.reply_to?.story?'story':'dm';
-      const r=rules.find(r=>r.trigger===trigger&&keywordMatches(m.message!.text||'',r.keywords,readFlow(r)?.match));
+      const r=rules.find(r=>hasChannel(r,trigger)&&(trigger!=='story'||!readFlow(r)?.storyId||readFlow(r)?.storyId===m.message?.reply_to?.story?.id)&&keywordMatches(m.message!.text||'',r.keywords,readFlow(r)?.match));
       if(r){if(readFlow(r))await queueInput(env,a,'dm:'+m.message.mid,m.sender.id,r.id,'start',{},created,created+86400);else await enqueue(env,a,r,'dm',m.sender.id,created+86400,'dm:'+m.message.mid);}
     }
   }
@@ -57,7 +58,8 @@ async function enqueue(env:AppEnv,a:Account,r:Rule,kind:string,recipient:string,
   await env.DB.batch(statements);
 }
 type Job={id:string;account_id:string;rule_id:string;recipient:string;kind:string;text:string;parent:string|null;expires:number;payload?:string};
-export async function drain(env:AppEnv){
+export async function drain(env:AppEnv){try{await drainPending(env);}finally{await schedulePending(env);}}
+async function drainPending(env:AppEnv){
   const a=await account(env);if(!a||!await licenseFor(env,a.id))return;
   const deadline=now()+18;await processInputs(env,a,deadline);
   // Never automatically retry a send with an unknown result: Meta has no idempotency key.
@@ -67,7 +69,7 @@ export async function drain(env:AppEnv){
   const count=await env.DB.prepare("SELECT count(*) n FROM jobs WHERE updated>? AND status IN ('sent','sending','uncertain')").bind(now()-3600).first<{n:number}>();
   if((count?.n||0)>=60)return; // Conservative local cap, not a claim about Meta's platform quota.
   for(let i=0;i<Math.min(12,60-(count?.n||0))&&now()<deadline;i++){
-    const job=await env.DB.prepare("UPDATE jobs SET status='sending',updated=? WHERE id=(SELECT id FROM jobs WHERE status='pending' AND expires>? AND (parent IS NULL OR parent IN (SELECT id FROM jobs WHERE status='sent')) ORDER BY created,id LIMIT 1) AND status='pending' RETURNING *").bind(now(),now()).first<Job>();
+    const job=await env.DB.prepare("UPDATE jobs SET status='sending',updated=? WHERE id=(SELECT id FROM jobs WHERE status='pending' AND expires>? AND not_before<=unixepoch() AND (parent IS NULL OR parent IN (SELECT id FROM jobs WHERE status='sent')) ORDER BY created,id LIMIT 1) AND status='pending' RETURNING *").bind(now(),now()).first<Job>();
     if(!job)break;
     try{
       if(job.kind==='public')await graph(env,a,encodeURIComponent(job.recipient)+'/replies',{message:job.text});
