@@ -10,14 +10,15 @@ export function safeLink(value:string) {try {const u=new URL(value);return u.pro
 export type Rule={id:string;name:string;trigger:string;media_id:string;keywords:string;message:string;link:string;public_reply:string;active:number;created:number;flow?:string};
 export function validateRule(b:Record<string,unknown>):Omit<Rule,'id'|'created'> {
   const field=(key:string,max:number)=>{if(typeof b[key]!=='string'||(b[key] as string).length>max)throw Error('Campo inválido: '+key);return (b[key] as string).trim();};
-  const name=field('name',80), trigger=field('trigger',20), media_id=field('media_id',100), keywords=field('keywords',160), message=field('message',600), link=field('link',350), public_reply=field('public_reply',2400);
+  const name=field('name',80), trigger=field('trigger',20), media_id=field('media_id',100), keywords=field('keywords',160), message=field('message',600), link=field('link',350), public_reply=field('public_reply',3009);
   const flow=b.flow===undefined||b.flow==='{}'?null:validateFlow(b.flow);
-  if(!name||!message||!keywords||!['comment','dm','story'].includes(trigger)||(flow?(!flow.map&&flow.linkEnabled&&!safeLink(link)):!safeLink(link))||typeof b.active!=='boolean')throw Error('Preencha nome, palavra-chave, mensagem e um link HTTPS válido.');
-  if(trigger==='comment'&&!flow?.allPosts&&!/^\d+$/.test(media_id))throw Error('Escolha um post para a automação de comentários.');
-  if(flow&&!flow.map&&trigger==='comment'&&!flow.welcomeEnabled&&(flow.requireFollow||flow.collectEmail||flow.attachmentType||flow.followupEnabled))throw Error('Ative a DM de boas-vindas para usar condições, mídia ou acompanhamento após um comentário.');
-  if(flow?.map&&trigger==='comment'){const start=flow.map.nodes.find(n=>n.id===flow.map!.start)!;if(start.type!=='message'||start.mediaType||start.parts?.length||(start.next&&!start.choices.length))throw Error('Após um comentário, inicie com uma mensagem e opções de resposta para continuar o fluxo.');}
-  if(public_reply.split('\n').filter(x=>x.trim()).some(x=>x.length>300)||public_reply.split('\n').filter(x=>x.trim()).length>8)throw Error('Use até 8 respostas públicas, com até 300 caracteres por linha.');
-  return {...(flow?{flow:JSON.stringify(flow)}:{}),name,trigger,media_id:trigger==='comment'?media_id:'',keywords,message,link,public_reply:trigger==='comment'?public_reply:'',active:b.active?1:0};
+  const comment=(flow?.channels||[trigger]).includes('comment');
+  if(!name||!message||(!keywords&&flow?.match!=='any')||!['comment','dm','story'].includes(trigger)||(flow?(!flow.map&&flow.linkEnabled&&!safeLink(link)):!safeLink(link))||typeof b.active!=='boolean')throw Error('Preencha nome, palavra-chave, mensagem e um link HTTPS válido.');
+  if(comment&&!flow?.allPosts&&!/^\d+$/.test(media_id))throw Error('Escolha um post para a automação de comentários.');
+  if(flow&&!flow.map&&comment&&!flow.welcomeEnabled&&(flow.requireFollow||flow.collectEmail||flow.attachmentType||flow.followupEnabled))throw Error('Ative a DM de boas-vindas para usar condições, mídia ou acompanhamento após um comentário.');
+  if(flow?.map&&comment){const start=flow.map.nodes.find(n=>n.id===flow.map!.start)!;if(start.type!=='message'||start.mediaType||start.parts?.length||(start.next&&!start.choices.length))throw Error('Após um comentário, inicie com uma mensagem e opções de resposta para continuar o fluxo.');}
+  if(public_reply.split('\n').filter(x=>x.trim()).some(x=>x.length>300)||public_reply.split('\n').filter(x=>x.trim()).length>10)throw Error('Use até 10 respostas públicas, com até 300 caracteres por linha.');
+  return {...(flow?{flow:JSON.stringify(flow)}:{}),name,trigger,media_id:comment?media_id:'',keywords,message,link,public_reply:comment?public_reply:'',active:b.active?1:0};
 }
 export async function boundedText(request:Request|Response, max=262144) {
   if(!request.body)return ''; const reader=request.body.getReader(); const chunks:Uint8Array[]=[];let length=0;
