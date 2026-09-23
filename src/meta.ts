@@ -10,14 +10,14 @@ export const now=()=>Math.floor(Date.now()/1000);
 export async function settings(env:AppEnv):Promise<Settings|null>{const row=await env.DB.prepare("SELECT value FROM settings WHERE key='meta'").first<{value:string}>();return row?JSON.parse(await unseal(row.value,env.APP_KEY)):null;}
 export const account=(env:AppEnv)=>env.DB.prepare('SELECT * FROM account LIMIT 1').first<Account>();
 export async function log(env:AppEnv,kind:string,detail:string){await env.DB.prepare('INSERT INTO events(kind,detail,created) VALUES(?,?,?)').bind(kind,detail.slice(0,350),now()).run();}
-export class MetaError extends Error{constructor(public status:number,public code:number,public subcode:number){super(`Meta: HTTP ${status}, código ${code}${subcode?' / '+subcode:''}. Confira as permissões e a conexão.`);}}
-export async function meta(url:string,init:RequestInit={}) {
-  const response=await fetch(url,{...init,signal:AbortSignal.timeout(12000)});
+export class MetaError extends Error{constructor(public status:number,public code:number,public subcode:number,description=''){super(`Meta: HTTP ${status}, código ${code}${subcode?' / '+subcode:''}. ${description?description.replace(/https?:\/\/\S+/g,'[endereço]').replace(/Bearer\s+\S+|access_token[=:]\S+/gi,'[credencial]').slice(0,300):'Confira o arquivo, as permissões e a conexão.'}`);}}
+export async function meta(url:string,init:RequestInit={},timeout=12000) {
+  const response=await fetch(url,{...init,signal:AbortSignal.timeout(timeout)});
   const data=JSON.parse(await boundedText(response,1048576));
-  if(!response.ok||data.error)throw new MetaError(response.status,Number(data.error?.code||0),Number(data.error?.error_subcode||0));
+  if(!response.ok||data.error)throw new MetaError(response.status,Number(data.error?.code||0),Number(data.error?.error_subcode||0),String(data.error?.error_user_msg||data.error?.message||''));
   return data;
 }
-export async function graph(env:AppEnv,a:Account,path:string,body?:unknown){return meta(`https://graph.instagram.com/${env.GRAPH_VERSION}/${path}`,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+await unseal(a.token,env.APP_KEY),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});}
+export async function graph(env:AppEnv,a:Account,path:string,body?:unknown,timeout=12000){return meta(`https://graph.instagram.com/${env.GRAPH_VERSION}/${path}`,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+await unseal(a.token,env.APP_KEY),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})},timeout);}
 async function recordInteraction(env:AppEnv,kind:string,id:string,userId:string,text:string,created:number,username=''){
  const detail=JSON.stringify({eventId:id,userId,username:username.slice(0,100),text:text.slice(0,2000)});
  await env.DB.prepare('INSERT INTO events(kind,detail,created) SELECT ?,?,? WHERE NOT EXISTS(SELECT 1 FROM events WHERE kind=? AND detail=?)').bind(kind,detail,created,kind,detail).run();
@@ -57,7 +57,7 @@ async function enqueue(env:AppEnv,a:Account,r:Rule,kind:string,recipient:string,
   if(kind==='private'&&r.public_reply)statements.push(env.DB.prepare('INSERT OR IGNORE INTO jobs(id,account_id,rule_id,recipient,kind,text,parent,created,expires,updated) VALUES(?,?,?,?,?,?,?,?,?,?)').bind(id+':public',a.id,r.id,recipient,'public',r.public_reply,id,now(),expires,now()));
   await env.DB.batch(statements);
 }
-type Job={id:string;account_id:string;rule_id:string;recipient:string;kind:string;text:string;parent:string|null;expires:number;payload?:string};
+type Job={id:string;account_id:string;rule_id:string;recipient:string;kind:string;text:string;parent:string|null;expires:number;payload?:string;phase?:string;conversation_id?:string};
 export async function drain(env:AppEnv){try{await drainPending(env);}finally{await schedulePending(env);}}
 async function drainPending(env:AppEnv){
   const a=await account(env);if(!a||!await licenseFor(env,a.id))return;
@@ -73,13 +73,16 @@ async function drainPending(env:AppEnv){
     if(!job)break;
     try{
       if(job.kind==='public')await graph(env,a,encodeURIComponent(job.recipient)+'/replies',{message:job.text});
-      else await graph(env,a,a.id+'/messages',{recipient:job.kind==='private'?{comment_id:job.recipient}:{id:job.recipient},message:job.payload?JSON.parse(job.payload):{text:job.text}});
+      else await graph(env,a,a.id+'/messages',{recipient:job.kind==='private'?{comment_id:job.recipient}:{id:job.recipient},message:job.payload?JSON.parse(job.payload):{text:job.text}},job.payload&&['audio','video','image'].includes(JSON.parse(job.payload)?.attachment?.type)?45000:12000);
       await env.DB.prepare("UPDATE jobs SET status='sent',detail='Aceito pela API da Meta.',updated=? WHERE id=?").bind(now(),job.id).run();
       await processInputs(env,a,deadline).catch(()=>{});
     }catch(e){
       const known=e instanceof MetaError&&e.status>=400&&e.status<500;
       const status=known?'failed':'uncertain';
-      await env.DB.prepare('UPDATE jobs SET status=?,detail=?,updated=? WHERE id=?').bind(status,known?(e as Error).message:'Não foi possível confirmar o envio. Confira a conversa no Instagram.',now(),job.id).run();
+      let block='';
+      if(job.conversation_id&&job.phase){const c=await env.DB.prepare('SELECT config FROM conversations WHERE id=?').bind(job.conversation_id).first<{config:string}>();const n=c&&JSON.parse(c.config).map.nodes.find((n:any)=>n.id===job.phase);if(n)block=`Bloco ${n.number||n.id} — ${n.mediaType==='audio'?'Áudio':n.mediaType==='video'?'Vídeo':n.mediaType==='image'?'Imagem':n.mediaType==='file'?'Documento':'Mensagem'}: `;}
+      const detail=known?(e as Error).message:'A Meta não confirmou o envio dentro do prazo. Confira a conversa no Instagram antes de reenviar.';
+      await env.DB.prepare('UPDATE jobs SET status=?,detail=?,updated=? WHERE id=?').bind(status,block+detail,now(),job.id).run();
       if(e instanceof MetaError&&(e.status===429||[4,17,32,613].includes(e.code)))break;
     }
   }

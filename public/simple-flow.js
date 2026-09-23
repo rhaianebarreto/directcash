@@ -1,10 +1,10 @@
 /* Visual conversation authoring. Keeps the existing flow payload and engine. */
 (() => {
   let editing = '', previewChannel = 'comment';
-  const titles = {message:'Mensagem',image:'Imagem',audio:'Áudio',video:'Vídeo',buttons:'Botões de resposta',link:'Botão com link',wait:'Espera'};
-  const icons = {message:'💬',image:'▧',audio:'♫',video:'▷',buttons:'☷',wait:'◷'};
+  const titles = {message:'Mensagem',image:'Imagem',audio:'Áudio',video:'Vídeo',file:'Documento',buttons:'Botões de resposta',link:'Botão com link',wait:'Espera'};
+  const icons = {message:'💬',image:'▧',audio:'♫',video:'▷',file:'📄',buttons:'☷',wait:'◷'};
   const kind = n => n.type === 'message' ? n.mediaType || (n.choices.length ? 'buttons' : 'message') : n.type;
-  const name = n => titles[kind(n)] || nodeNames[n.type];
+  const name = n => 'Bloco '+n.number+' — '+(titles[kind(n)] || nodeNames[n.type]);
   const mutate = fn => { remember(); fn(); renderMap(); };
   const focusCard = id => requestAnimationFrame(() => guidedHost.querySelector('[data-node="'+id+'"]')?.scrollIntoView({block:'nearest',behavior:'smooth'}));
   function inputField(host,label,value,onchange,options={}) {
@@ -22,9 +22,9 @@
   function add(source,choice,type) {
     if(mapState.map.nodes.length>=30){toast('Este fluxo já tem 30 etapas.');return;}
     remember();
-    const n=defaultNode(['image','audio','video','buttons','link'].includes(type)?'message':type);
+    const n=defaultNode(['image','audio','video','file','buttons','link'].includes(type)?'message':type);
     n.text='';
-    if(['image','audio','video'].includes(type))n.mediaType=type;
+    if(['image','audio','video','file'].includes(type))n.mediaType=type;
     if(type==='buttons')n.choices=[{title:'',next:''},{title:'',next:''}];
     if(type==='link')n.links=[{title:'',url:''}];
     if(type==='wait')n.seconds=5;
@@ -37,7 +37,7 @@
   chooseNextStep=function(source,choice){
     const d=el('dialog',null,'sf-picker');d.append(el('h2','Qual é o próximo passo?'),el('p','Escolha o que a pessoa vai receber.','muted'));
     const grid=el('div',null,'sf-picker-grid');
-    for(const type of ['message','image','audio','video','wait','buttons','link']){const b=button('',()=>{d.close();add(source,choice,type);},'sf-pick');b.append(el('span',icons[type]||'↗'),el('strong',titles[type]));grid.append(b);}
+    for(const type of ['message','image','audio','video','file','wait','buttons','link']){const b=button('',()=>{d.close();add(source,choice,type);},'sf-pick');b.append(el('span',icons[type]||'↗'),el('strong',titles[type]));grid.append(b);}
     d.append(grid);const more=el('details');more.append(el('summary','Mais opções'));for(const type of ['email','follow','tag','carousel'])more.append(button(nodeNames[type],()=>{d.close();add(source,choice,type);},'outline'));d.append(more,button('Cancelar',()=>d.close(),'subtle'));d.addEventListener('close',()=>d.remove());document.body.append(d);d.showModal();
   };
   function removeStep(n){
@@ -114,7 +114,7 @@
     const lane=el('div',null,'sf-lane');lane.append(el('h2','Monte a conversa'),el('p','Adicione uma etapa. Depois, escolha o próximo passo.','muted'));
     const start=el('div',null,'sf-start');start.append(el('small','INÍCIO','eyebrow'),el('strong',(mapState.channels||[mapState.trigger]).map(c=>channelNames[c]).join(' + ')),el('span',mapState.match==='any'?'Qualquer texto':mapState.keywords||'Defina as palavras-chave no início'));lane.append(start);
     const first=mapState.map.nodes.find(n=>n.id===mapState.map.start);
-    if((mapState.channels||[mapState.trigger]).includes('comment')&&first?.next&&!first.choices.length)lane.append(el('p','Para continuar após a primeira mensagem de um comentário, a pessoa precisa responder. Adicione um botão de resposta na primeira mensagem.','notice'));
+    if((mapState.channels||[mapState.trigger]).includes('comment')&&first?.next&&!first.choices.length)lane.append(el('p','Para continuar após a primeira mensagem de um comentário, a pessoa precisa responder. Ela pode escrever uma resposta ou tocar em uma opção de resposta. Botões de link apenas abrem o endereço.','notice'));
     if(mapState.map.start)renderPath(lane,mapState.map.start,new Set(),'PRIMEIRA ETAPA');else lane.append(button('+ Primeira etapa',()=>chooseNextStep(null),'gold'));
     const footer=el('div',null,'sf-save');footer.append(el('span','Tudo pronto? Salve sua conversa.'),button('Salvar fluxo',()=>$('#save-flow').click(),'gold'));lane.append(footer);
     const preview=el('aside',null,'sf-preview');preview.append(el('h3','Prévia da conversa'),el('p','Exemplo de como a pessoa percorre o fluxo.','small muted'));const conv=el('div');conv.id='sf-conversation';preview.append(conv);guidedHost.append(lane,preview);renderConversation();

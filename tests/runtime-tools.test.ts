@@ -19,8 +19,11 @@ test('runtime: authenticated uploads, byte ranges and persistent delayed deliver
  assert.equal((await request('/api/uploads?kind=image',{method:'POST',headers,body:'not a png'})).status,415);
  const upload=await request('/api/uploads?kind=image',{method:'POST',headers,body:png});assert.equal(upload.status,200,await upload.clone().text());
  const {url}=await upload.json() as any;assert.ok(url.startsWith('http://test.example/uploads/'));
- const media=await mf.dispatchFetch(url);assert.equal(media.status,200);assert.deepEqual(Buffer.from(await media.arrayBuffer()),png);
- const partial=await mf.dispatchFetch(url,{headers:{Range:'bytes=10-30'}});assert.equal(partial.status,206);assert.deepEqual(Buffer.from(await partial.arrayBuffer()),png.subarray(10,31));
+ const media=await mf.dispatchFetch(url);assert.equal(media.status,200);assert.equal(media.headers.get('Content-Length'),String(png.length));assert.deepEqual(Buffer.from(await media.arrayBuffer()),png);
+ const partial=await mf.dispatchFetch(url,{headers:{Range:'bytes=10-30'}});assert.equal(partial.status,206);assert.equal(partial.headers.get('Content-Length'),'21');assert.deepEqual(Buffer.from(await partial.arrayBuffer()),png.subarray(10,31));
+ for(const [type,bytes,kind]of [['audio/mpeg',Buffer.from([255,243,228,100,0,31,113,227]),'audio'],['application/pdf',Buffer.from('%PDF-1.7\n test'),'file']] as const){
+  const r=await request('/api/uploads?kind='+kind,{method:'POST',headers:{...headers,'Content-Type':type},body:bytes});assert.equal(r.status,200);const result:any=await r.json();const download=await mf.dispatchFetch(result.url);assert.equal(download.headers.get('Content-Type'),type);assert.equal(download.headers.get('Content-Length'),String(bytes.length));assert.deepEqual(Buffer.from(await download.arrayBuffer()),bytes);if(kind==='file')assert.equal(download.headers.get('Content-Disposition'),'attachment');
+ }
  const head=await mf.dispatchFetch(url,{method:'HEAD'});assert.equal(head.headers.get('Content-Length'),String(png.length));assert.equal((await head.arrayBuffer()).byteLength,0);
  assert.equal((await mf.dispatchFetch(url,{headers:{Range:'bytes=99999999-'}})).status,416);
  const time=Math.floor(Date.now()/1000);
@@ -43,6 +46,8 @@ test('runtime: authenticated uploads, byte ranges and persistent delayed deliver
  assert.equal(sent.length,3);assert.equal(sent[1].message.text,'Mensagem com pausa');assert.equal(sent[2].message.attachment.type,'audio');
  const delayed=(await db.prepare("SELECT created,not_before,updated FROM jobs WHERE conversation_id<>'' ORDER BY created,id").all<any>()).results;
  assert.equal(delayed.length,2);assert.equal(delayed[0].not_before-delayed[0].created,2);assert.equal(delayed[1].not_before-delayed[1].created,1);for(const job of delayed)assert.ok(job.updated>=job.not_before);
+ const activity=await request('/api/activity',{headers:{Cookie}});assert.equal(activity.status,200);const report:any=await activity.json();assert.ok(report.jobs.some((j:any)=>j.node_id==='b'&&j.block_number===2));
+ const invalid=await request('/api/rules',{method:'POST',headers:{Cookie,Origin:'http://test.example','Content-Type':'application/json'},body:JSON.stringify({name:'Teste',trigger:'dm',media_id:'',keywords:'teste',message:'Fluxo',link:'',public_reply:'',active:false,flow:{version:1,linkEnabled:false,map:{start:'bad',nodes:[{id:'bad',number:9,type:'message',mediaType:'audio',mediaUrl:'bad'}]}}})});assert.equal(invalid.status,400);const problem:any=await invalid.json();assert.equal(problem.nodeId,'bad');assert.equal(problem.blockNumber,9);
  }finally{await mf.dispose();}
 });
 
