@@ -137,7 +137,7 @@ async function handle(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Respo
     if(!/^\d{1,40}$/.test(mediaId)||!/^\d{1,80}$/.test(commentId)||!/^\d{1,80}$/.test(userId)||!/^[a-f0-9-]{36}$/.test(ruleId))return json({error:'Selecione um post, uma pessoa e um fluxo válidos.'},400);
     const a=await account(env);if(!a)return json({error:'Conecte o Instagram primeiro.'},400);if(!await licenseFor(env,a.id))return json({error:'Ative sua licença para disparar o fluxo.'},400);
     const rule=await env.DB.prepare('SELECT * FROM rules WHERE id=? AND active=1').bind(ruleId).first<any>(),flow=rule&&readFlow(rule);
-    if(!rule||!flow||!hasChannel(rule,'comment')||!(flow.allPosts||rule.media_id===mediaId))return json({error:'Esse fluxo não está ativo para comentários deste post.'},400);
+    if(!rule||!flow||!hasChannel(rule,'comment'))return json({error:'Selecione um fluxo ativo que aceite comentários.'},400);
     try{
       const comment=await graph(env,a,`${commentId}?fields=id,from,media`),from=comment?.from?.id,media=comment?.media?.id;
       if(String(comment?.id)!==commentId||String(from)!==userId||(media&&String(media)!==mediaId))return json({error:'O comentário selecionado não está mais disponível neste post.'},409);
