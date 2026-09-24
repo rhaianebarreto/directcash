@@ -6,6 +6,8 @@ import {profileEnv,profiles,scoped,registerProfile,publicProfiles} from './profi
 import {boundedText,digest,equal,seal,unseal,signatureValid,validateRule} from './core';
 import {account,settings,now,meta,graph,ingest,drain,maintenance,log,type AppEnv,type Settings} from './meta';
 import {licenseFor,activateLicense,LicenseServiceError} from './license';
+import {readFlow,hasChannel} from './flow';
+import {queueInput} from './conversations';
 const json=(data:unknown,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const cookie=(value:string,secure=true,max=86400)=>`dc_session=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${max}${secure?'; Secure':''}`;
 async function session(req:Request,env:AppEnv){const value=req.headers.get('Cookie')?.match(/(?:^|; )dc_session=([^;]+)/)?.[1];if(!value)return null;const id=await digest(value);return await env.DB.prepare('SELECT id FROM sessions WHERE id=? AND expires>?').bind(id,now()).first<{id:string}>();}
@@ -110,10 +112,15 @@ async function handle(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Respo
     const a=await account(env);if(!a)return json({error:'Conecte seu Instagram.'},400);
     try{await graph(env,a,'me?fields=user_id,username');await graph(env,a,a.id+'/subscribed_apps',{subscribed_fields:['comments','messages','messaging_postbacks']});return json({message:'Token aceito e conta inscrita em comentários e mensagens. Agora faça um comentário de teste; isso confirma o webhook completo.'});}catch{return json({error:'A Meta recusou a verificação. Confira as permissões e reconecte sua conta.'},400);}
   }
-  if(path.startsWith('/api/media/')&&req.method==='GET'){
+  if(path.startsWith('/api/media/')&&!path.endsWith('/comments')&&req.method==='GET'){
     const id=path.slice('/api/media/'.length);if(!/^\d{1,40}$/.test(id))return json({error:'Publicação inválida.'},400);
     const a=await account(env);if(!a)return json({error:'Conecte o Instagram primeiro.'},400);
     try{return json(await graph(env,a,id+'?fields=id,caption,permalink,media_type,media_url,thumbnail_url,timestamp'));}catch{return json({error:'Não foi possível carregar a prévia da publicação.'},400);}
+  }
+  if(path.startsWith('/api/media/')&&path.endsWith('/comments')&&req.method==='GET'){
+    const id=path.slice('/api/media/'.length,-'/comments'.length);if(!/^\d{1,40}$/.test(id))return json({error:'Publicação inválida.'},400);
+    const a=await account(env);if(!a)return json({error:'Conecte o Instagram primeiro.'},400);
+    try{const data=await graph(env,a,`${id}/comments?fields=id,text,from,timestamp&limit=100`);return json({data:data.data||[]});}catch{return json({error:'Não foi possível carregar os comentários deste post. Confira a permissão de comentários.'},400);}
   }
   if(path==='/api/media'&&req.method==='GET'){
     const a=await account(env);if(!a)return json({error:'Conecte o Instagram primeiro.'},400);
@@ -125,6 +132,23 @@ async function handle(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Respo
     try{const data=await graph(env,a,`${a.id}/stories?fields=id,media_type,media_url,thumbnail_url,timestamp&limit=100`);return json({data:data.data||[]});}catch{return json({error:'Não foi possível listar os stories. Confira a conexão e se há stories ativos.'},400);}
   }
   if(path==='/api/rules'&&req.method==='GET')return json((await env.DB.prepare('SELECT * FROM rules ORDER BY created DESC').all()).results);
+  if(path==='/api/manual-dispatch'&&req.method==='POST'){
+    const b=await body(req),mediaId=typeof b.mediaId==='string'?b.mediaId.trim():'',commentId=typeof b.commentId==='string'?b.commentId.trim():'',userId=typeof b.userId==='string'?b.userId.trim():'',ruleId=typeof b.ruleId==='string'?b.ruleId.trim():'';
+    if(!/^\d{1,40}$/.test(mediaId)||!/^\d{1,80}$/.test(commentId)||!/^\d{1,80}$/.test(userId)||!/^[a-f0-9-]{36}$/.test(ruleId))return json({error:'Selecione um post, uma pessoa e um fluxo válidos.'},400);
+    const a=await account(env);if(!a)return json({error:'Conecte o Instagram primeiro.'},400);if(!await licenseFor(env,a.id))return json({error:'Ative sua licença para disparar o fluxo.'},400);
+    const rule=await env.DB.prepare('SELECT * FROM rules WHERE id=? AND active=1').bind(ruleId).first<any>(),flow=rule&&readFlow(rule);
+    if(!rule||!flow||!hasChannel(rule,'comment')||!(flow.allPosts||rule.media_id===mediaId))return json({error:'Esse fluxo não está ativo para comentários deste post.'},400);
+    try{
+      const comment=await graph(env,a,`${commentId}?fields=id,from,media`),from=comment?.from?.id,media=comment?.media?.id;
+      if(String(comment?.id)!==commentId||String(from)!==userId||(media&&String(media)!==mediaId))return json({error:'O comentário selecionado não está mais disponível neste post.'},409);
+    }catch{return json({error:'Não foi possível confirmar esse comentário na Meta. Atualize a lista e tente novamente.'},409);}
+    const inputId='manual:'+commentId+':'+ruleId,existing=await env.DB.prepare('SELECT status FROM flow_inputs WHERE id=?').bind(inputId).first<{status:string}>();
+    if(existing)return json({ok:true,already:true,message:existing.status==='done'?'Este comentário já recebeu este fluxo.':'Este disparo já está na fila.'});
+    const t=now();await queueInput(env,a,inputId,userId,ruleId,'start',{comment:commentId,manual:true},t,t+7*86400);
+    await env.DB.prepare('INSERT INTO events(kind,detail,created) VALUES(?,?,?)').bind('manual_dispatch',JSON.stringify({eventId:inputId,userId,commentId,mediaId,ruleId}),t).run();
+    ctx.waitUntil(drain(env).catch(()=>{}));
+    return json({ok:true,queued:true,message:'Disparo colocado na fila. Acompanhe em Atividade.'});
+  }
   if(path==='/api/rules'&&req.method==='POST'){
     let r;const b=await body(req);try{r=validateRule(b);}catch(e){return json({error:(e as Error).message,...(e instanceof BlockError?{nodeId:e.nodeId,blockNumber:e.blockNumber}:{})},400);}
     const a=await account(env);
@@ -143,4 +167,3 @@ async function handle(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Respo
   if(path==='/api/activity'&&req.method==='GET')return json({jobs:(await env.DB.prepare("SELECT j.id,j.kind,j.status,j.created,j.updated,j.detail,j.text,j.payload,j.recipient,j.rule_id,j.phase AS node_id,COALESCE(c.user_id,j.recipient) AS user_id,(SELECT COALESCE(json_extract(n.value,'$.number'),CAST(n.key AS INTEGER)+1) FROM json_each(c.config,'$.map.nodes') n WHERE json_extract(n.value,'$.id')=j.phase LIMIT 1) AS block_number FROM jobs j LEFT JOIN conversations c ON c.id=j.conversation_id ORDER BY j.created DESC LIMIT 50").all()).results,events:(await env.DB.prepare('SELECT kind,detail,created FROM events ORDER BY created DESC,id DESC LIMIT 100').all()).results});
   return json({error:'Rota não encontrada.'},404);
 }
-

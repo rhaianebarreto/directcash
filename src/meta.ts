@@ -3,7 +3,7 @@ import {readFlow,keywordMatches,hasChannel} from './flow';
 import {queueInput,processInputs} from './conversations';
 import { boundedText, digest, matches, seal, unseal, type Rule } from './core';
 import {licenseFor} from './license';
-export type AppEnv=Omit<Env,'FLOW_SCHEDULER'> & {FLOW_SCHEDULER?:DurableObjectNamespace<import('./scheduler').FlowScheduler>;ADMIN_PASSWORD:string;APP_KEY:string;TEST_ACCESS_UNTIL?:string;LICENSE_ENFORCEMENT?:string;ROOT_DB?:D1Database;PROFILE_ID?:string;IN_FLOW_ALARM?:boolean};
+export type AppEnv=Omit<Env,'FLOW_SCHEDULER'|'FLOW_MEDIA'> & {FLOW_SCHEDULER?:DurableObjectNamespace<import('./scheduler').FlowScheduler>;FLOW_MEDIA?:DurableObjectNamespace<import('./media-store').FlowMedia>;ADMIN_PASSWORD:string;APP_KEY:string;TEST_ACCESS_UNTIL?:string;LICENSE_ENFORCEMENT?:string;ROOT_DB?:D1Database;PROFILE_ID?:string;IN_FLOW_ALARM?:boolean};
 export type Account={id:string;username:string;token:string;expires:number;refreshed:number};
 export type Settings={appId:string;appSecret:string;verifyToken:string;contact:string;owner:string};
 export const now=()=>Math.floor(Date.now()/1000);
