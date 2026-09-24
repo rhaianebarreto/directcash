@@ -1,5 +1,5 @@
 export type Part={type:'text'|'image'|'audio'|'video'|'delay';text:string;url:string;seconds:number};
-export type Node={number?:number;fileName?:string;fileSize?:number;sendDelay?:{mode:'auto'|'manual';seconds:number};mediaDuration?:number;id:string;type:'message'|'carousel'|'wait'|'email'|'follow'|'tag';text:string;next:string;choices:{title:string;next:string}[];minutes:number;url:string;label:string;mediaType:''|'image'|'audio'|'video'|'file';mediaUrl:string;tag:string;links?:{title:string;url:string}[];parts?:Part[];seconds?:number;cards?:{title:string;subtitle:string;image:string;buttons:{title:string;url:string}[]}[];x:number;y:number};
+export type Node={replyStyle?:'quick'|'buttons';number?:number;fileName?:string;fileSize?:number;sendDelay?:{mode:'auto'|'manual';seconds:number};mediaDuration?:number;id:string;type:'message'|'carousel'|'wait'|'email'|'follow'|'tag';text:string;next:string;choices:{title:string;next:string}[];minutes:number;url:string;label:string;mediaType:''|'image'|'audio'|'video'|'file';mediaUrl:string;tag:string;links?:{title:string;url:string}[];parts?:Part[];seconds?:number;cards?:{title:string;subtitle:string;image:string;buttons:{title:string;url:string}[]}[];x:number;y:number};
 export type MapFlow={start:string;nodes:Node[]};
 export class BlockError extends Error{constructor(public nodeId:string,public blockNumber:number,message:string){super(`Bloco ${blockNumber} — ${message}`);}}
 export function validateMap(input:any):MapFlow{
@@ -14,7 +14,9 @@ export function validateMap(input:any):MapFlow{
   if(['message','email','follow'].includes(type)&&!text&&!(type==='message'&&mediaType))throw Error('Preencha a mensagem de cada bloco.');
   const valid=(v:string)=>{try{const u=new URL(v);return u.protocol==='https:'&&!u.username&&!u.password;}catch{return false;}};
   if(url&&!valid(url)||!['','image','audio','video','file'].includes(mediaType)||mediaType&&!valid(mediaUrl))throw Error('Use links HTTPS válidos nos blocos.');
+  const replyStyle=b.replyStyle??'quick';if(!['quick','buttons'].includes(replyStyle))throw Error('Escolha o estilo dos botões.');
   const choices=(b.choices??[]);if(!Array.isArray(choices)||choices.length>13)throw Error('Use até 13 opções por mensagem.');
+  if(replyStyle==='buttons'&&choices.length>3)throw Error('Botões na mensagem permitem até 3 respostas. Use respostas rápidas para mais opções.');
   const parsed=choices.map((c:any)=>{if(typeof c.title!=='string'||!c.title.trim()||Array.from(c.title).length>20||typeof c.next!=='string'||c.next.length>40)throw Error('Preencha o texto e o destino das opções.');return {title:c.title.trim(),next:c.next};});
   const links=b.links??[];if(!Array.isArray(links)||links.length>3||links.some((l:any)=>typeof l.title!=='string'||!l.title.trim()||l.title.length>20||!valid(l.url)))throw Error('Use até 3 botões com título e link HTTPS.');if(links.length&&(type!=='message'||url||mediaType||parsed.length||b.parts?.length))throw Error('Use botões de link em uma mensagem de texto separada.');
   if(parsed.length&&next)throw Error('Use os destinos das opções, sem uma segunda saída no mesmo bloco.');
@@ -34,7 +36,7 @@ export function validateMap(input:any):MapFlow{
   if(mediaType==='audio'&&sendDelay?.mode==='auto'&&!mediaDuration)throw Error('Aguarde carregar a duração do áudio ou defina o tempo manualmente.');
   const fileName=s('fileName',200),fileSize=Number(b.fileSize||0);
   if(!Number.isSafeInteger(fileSize)||fileSize<0||fileSize>10485760)throw Error('Tamanho do arquivo inválido.');
-  return {number,fileName,fileSize,sendDelay,mediaDuration,links:links.map((l:any)=>({title:l.title.trim(),url:l.url})),parts,cards,id,type:type as Node['type'],text,next,choices:parsed,minutes,seconds,url,label:s('label',20)||'Abrir link',mediaType:mediaType as Node['mediaType'],mediaUrl,tag,x:Math.max(0,Math.min(4000,Number(b.x)||0)),y:Math.max(0,Math.min(4000,Number(b.y)||0))};
+  return {replyStyle,number,fileName,fileSize,sendDelay,mediaDuration,links:links.map((l:any)=>({title:l.title.trim(),url:l.url})),parts,cards,id,type:type as Node['type'],text,next,choices:parsed,minutes,seconds,url,label:s('label',20)||'Abrir link',mediaType:mediaType as Node['mediaType'],mediaUrl,tag,x:Math.max(0,Math.min(4000,Number(b.x)||0)),y:Math.max(0,Math.min(4000,Number(b.y)||0))};
   }catch(e){throw new BlockError(String(b?.id||''),number,e instanceof Error?e.message:'Confira este bloco.');}
  });
  const ids=new Set(nodes.map(n=>n.id));if(ids.size!==nodes.length||!ids.has(input.start))throw Error('Escolha um bloco inicial válido.');

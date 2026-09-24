@@ -1,7 +1,7 @@
 import {schedulePending} from './scheduler-client';
 import {readFlow,keywordMatches,hasChannel} from './flow';
 import {queueInput,processInputs} from './conversations';
-import { boundedText, matches, seal, unseal, type Rule } from './core';
+import { boundedText, digest, matches, seal, unseal, type Rule } from './core';
 import {licenseFor} from './license';
 export type AppEnv=Omit<Env,'FLOW_SCHEDULER'> & {FLOW_SCHEDULER?:DurableObjectNamespace<import('./scheduler').FlowScheduler>;ADMIN_PASSWORD:string;APP_KEY:string;TEST_ACCESS_UNTIL?:string;LICENSE_ENFORCEMENT?:string;ROOT_DB?:D1Database;PROFILE_ID?:string;IN_FLOW_ALARM?:boolean};
 export type Account={id:string;username:string;token:string;expires:number;refreshed:number};
@@ -38,6 +38,12 @@ export async function ingest(env:AppEnv, payload:{object?:string;entry?:Entry[]}
       if(r){if(readFlow(r))await queueInput(env,a,'comment:'+c.id,c.from.id,r.id,'start',{comment:c.id},created,created+7*86400);else await enqueue(env,a,r,'private',c.id,created+7*86400,'comment:'+c.id);}
     }
     for(const m of (entry.messaging||[]).slice(0,100)){
+      if(m.postback?.payload&&m.sender?.id&&m.sender.id!==a.id){
+       const created=Math.floor(Number(m.timestamp)/1000),quick=m.postback.payload;if(!Number.isFinite(created)||created>now()+300||now()-created>86400||quick.length>200||!quick.startsWith('dc:'))continue;
+       const eventId='postback:'+await digest(JSON.stringify([m.sender.id,m.postback.mid||m.timestamp,quick]));
+       await recordInteraction(env,'button',eventId,m.sender.id,m.postback.title||'',created);
+       await queueInput(env,a,eventId,m.sender.id,'','reply',{text:m.postback.title||'',quick},created,created+86400);continue;
+      }
       if(!m.sender?.id||m.sender.id===a.id||m.message?.is_echo||!m.message?.mid||(!m.message.text&&!m.message.quick_reply?.payload))continue;
       const created=Math.floor(Number(m.timestamp)/1000);if(!Number.isFinite(created)||created>now()+300||now()-created>86400)continue;
       const quick=m.message.quick_reply?.payload;
@@ -51,7 +57,7 @@ export async function ingest(env:AppEnv, payload:{object?:string;entry?:Entry[]}
   }
   await env.DB.prepare("INSERT INTO settings(key,value) VALUES('last_webhook',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(String(now())).run();
 }
-type Entry={id?:string;time?:number;changes?:{field?:string;value?:{id?:string;text?:string;from?:{id?:string;username?:string};parent_id?:string;media?:{id?:string;media_product_type?:string}}}[];messaging?:{sender?:{id?:string};timestamp?:number;message?:{mid?:string;text?:string;is_echo?:boolean;quick_reply?:{payload?:string};reply_to?:{story?:{id?:string;url?:string}}}}[]};
+type Entry={id?:string;time?:number;changes?:{field?:string;value?:{id?:string;text?:string;from?:{id?:string;username?:string};parent_id?:string;media?:{id?:string;media_product_type?:string}}}[];messaging?:{sender?:{id?:string};timestamp?:number;postback?:{mid?:string;title?:string;payload?:string};message?:{mid?:string;text?:string;is_echo?:boolean;quick_reply?:{payload?:string};reply_to?:{story?:{id?:string;url?:string}}}}[]};
 async function enqueue(env:AppEnv,a:Account,r:Rule,kind:string,recipient:string,expires:number,id:string){
   const statements=[env.DB.prepare('INSERT OR IGNORE INTO jobs(id,account_id,rule_id,recipient,kind,text,created,expires,updated) VALUES(?,?,?,?,?,?,?,?,?)').bind(id,a.id,r.id,recipient,kind,r.message+'\n\n'+r.link,now(),expires,now())];
   if(kind==='private'&&r.public_reply)statements.push(env.DB.prepare('INSERT OR IGNORE INTO jobs(id,account_id,rule_id,recipient,kind,text,parent,created,expires,updated) VALUES(?,?,?,?,?,?,?,?,?,?)').bind(id+':public',a.id,r.id,recipient,'public',r.public_reply,id,now(),expires,now()));
