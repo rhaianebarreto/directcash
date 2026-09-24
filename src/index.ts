@@ -120,7 +120,7 @@ async function handle(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Respo
   if(path.startsWith('/api/media/')&&path.endsWith('/comments')&&req.method==='GET'){
     const id=path.slice('/api/media/'.length,-'/comments'.length);if(!/^\d{1,40}$/.test(id))return json({error:'Publicação inválida.'},400);
     const a=await account(env);if(!a)return json({error:'Conecte o Instagram primeiro.'},400);
-    try{const data=await graph(env,a,`${id}/comments?fields=id,text,from,timestamp&limit=100`);return json({data:data.data||[]});}catch{return json({error:'Não foi possível carregar os comentários deste post. Confira a permissão de comentários.'},400);}
+    try{const data=await graph(env,a,`${id}/comments?fields=id,text,from,username,profile_picture_url,timestamp&limit=100`);return json({data:data.data||[]});}catch{return json({error:'Não foi possível carregar os comentários deste post. Confira a permissão de comentários.'},400);}
   }
   if(path==='/api/media'&&req.method==='GET'){
     const a=await account(env);if(!a)return json({error:'Conecte o Instagram primeiro.'},400);
