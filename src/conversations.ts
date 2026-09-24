@@ -90,7 +90,7 @@ async function plan(env:AppEnv,a:Account,input:Input,deadline:number){
   if(n.type==='carousel'){send({attachment:{type:'template',payload:{template_type:'generic',elements:n.cards!.map(card=>({title:fillVariables(card.title,cfg.name),subtitle:fillVariables(card.subtitle,cfg.name),image_url:card.image,...(card.buttons.length?{buttons:card.buttons.map(b=>({type:'web_url',url:b.url,title:b.title}))}:{})}))}}},'run');}
   else if(n.type==='message'){
    const text=fillVariables(n.text,cfg.name);let message:Record<string,unknown>;
-   if(n.choices.length)message={text,quick_replies:n.choices.map((ch,index)=>({content_type:'text',title:ch.title,payload:'dc:'+c!.id+':'+n.id+':'+index}))};
+   if(n.choices.length){const payload=(index:number)=>'dc:'+c!.id+':'+n.id+':'+index;message=n.replyStyle==='buttons'?{attachment:{type:'template',payload:{template_type:'button',text,buttons:n.choices.map((ch,index)=>({type:'postback',title:ch.title,payload:payload(index)}))}}}:{text,quick_replies:n.choices.map((ch,index)=>({content_type:'text',title:ch.title,payload:payload(index)}))};}
    else if(n.links?.length)message={attachment:{type:'template',payload:{template_type:'button',text,buttons:n.links.map(l=>({type:'web_url',url:l.url,title:l.title}))}}};
    else if(n.mediaType==='file')message={text:(n.fileName||'Baixar documento')+'\n'+n.mediaUrl};
    else if(n.mediaType)message={attachment:{type:n.mediaType,payload:{url:n.mediaUrl}}};else message=textMessage(text,n.url,n.label);
