@@ -83,9 +83,9 @@
     const card=el('article',null,'sf-card');card.dataset.node=n.id;
     const head=el('div',null,'sf-card-head'),heading=el('div');heading.append(el('small',label,'eyebrow'),el('h3',(icons[kind(n)]||'◇')+' '+name(n)));
     head.append(heading,button(editing===n.id?'Fechar':'Editar',()=>{editing=editing===n.id?'':n.id;renderGuided();focusCard(n.id);},'outline'));
-    head.append(button('Duplicar',()=>window.duplicateFlowBlock(n),'outline'));
+    head.append(window.duplicateBlockButton(n));
     const del=button('×',()=>removeStep(n),'subtle');del.setAttribute('aria-label','Remover '+name(n));head.append(del);card.append(head);
-    if(editing===n.id)editor(card,n);else{const text=n.type==='wait'?(n.seconds??n.minutes)+' '+(n.seconds===undefined?'minutos':'segundos'):n.mediaType?(n.mediaUrl?'Arquivo adicionado':'Toque para anexar o arquivo'):n.text||n.tag||'Toque para escrever sua mensagem';card.append(el('p',text,'sf-card-summary'));if(n.type==='message'&&window.FlowTiming)card.append(el('small','◷ '+FlowTiming.label(n),'fe-delay-preview'));}
+    if(editing===n.id)editor(card,n);else{const text=n.type==='wait'?FlowTiming.waitLabel(n):n.mediaType?(n.mediaUrl?'Arquivo adicionado':'Toque para anexar o arquivo'):n.text||n.tag||'Toque para escrever sua mensagem';card.append(el('p',text,'sf-card-summary'));if(n.type==='message'&&window.FlowTiming)card.append(el('small','◷ '+FlowTiming.label(n),'fe-delay-preview'));}
     host.append(card);
     if(n.choices.length){
       card.append(el('p','Cada resposta continua pelo caminho abaixo.','small muted'));
@@ -105,7 +105,7 @@
     let id=mapState.map.start;const seen=new Set();
     while(id&&!seen.has(id)){seen.add(id);const n=mapState.map.nodes.find(x=>x.id===id);if(!n)break;
       if(n.type==='message'&&window.FlowTiming)host.append(el('small','◷ '+FlowTiming.label(n),'fe-delay-preview'));
-      host.append(el('div',n.type==='wait'?'◷ '+(n.seconds??n.minutes)+' '+(n.seconds===undefined?'min':'s'):n.mediaType?(icons[n.mediaType]+' '+titles[n.mediaType]):(n.text||n.tag||'Sua mensagem aparece aqui').replace(/\{\{\s*first_name\s*\}\}/g,'Ana'),'sf-bubble'));
+      host.append(el('div',n.type==='wait'?'◷ '+FlowTiming.waitLabel(n):n.mediaType?(icons[n.mediaType]+' '+titles[n.mediaType]):(n.text||n.tag||'Sua mensagem aparece aqui').replace(/\{\{\s*first_name\s*\}\}/g,'Ana'),'sf-bubble'));
       if(n.mediaType&&n.mediaUrl&&window.flowMediaPreview)window.flowMediaPreview(host,n.mediaType,n.mediaUrl);
       for(const p of n.parts||[])host.append(el('div',p.type==='text'?p.text:p.type==='delay'?'◷ '+p.seconds+' s':titles[p.type]||p.type,'sf-bubble'));
       for(const l of [...(n.url?[{title:n.label,url:n.url}]:[]),...(n.links||[])]){const a=el('a',l.title+' ↗','preview-button');if(/^https:\/\//i.test(l.url)){a.href=l.url;a.target='_blank';a.rel='noopener noreferrer';}else a.title='Preencha um endereço HTTPS';host.append(a);}

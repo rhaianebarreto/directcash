@@ -1,6 +1,15 @@
 /* Editor controls use the existing seconds/minutes storage format. */
 (() => {
  const units=new Map();
+ window.duplicateBlockButton=n=>{
+  const control=button('',()=>window.duplicateFlowBlock(n),'outline block-duplicate');
+  control.title='Duplicar bloco';control.setAttribute('aria-label','Duplicar bloco '+(n.number||''));
+  const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  for(const [key,value]of Object.entries({viewBox:'0 0 24 24',width:'18',height:'18',fill:'none',stroke:'currentColor','stroke-width':'1.8','aria-hidden':'true'}))icon.setAttribute(key,value);
+  const back=document.createElementNS(icon.namespaceURI,'path');back.setAttribute('d','M8 8V4a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1h-4');
+  const front=document.createElementNS(icon.namespaceURI,'rect');for(const [key,value]of Object.entries({x:'3',y:'8',width:'13',height:'13',rx:'2'}))front.setAttribute(key,value);
+  icon.append(back,front);control.append(icon);control.style.cssText='display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:34px;height:34px;padding:6px;min-height:34px';return control;
+ };
  window.renderWaitUnits=(host,n,redraw=renderInspector)=>{
   const unit=units.get(n.id)||(n.seconds!==undefined?'seconds':n.minutes%60===0?'hours':'minutes');
   const seconds=n.seconds??n.minutes*60;

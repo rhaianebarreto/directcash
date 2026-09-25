@@ -1,6 +1,6 @@
 # Atualização DirectCA$H — passo a passo para alunas
 
-**Código da atualização: `editor-2026-09-25`**
+**Código da atualização: `editor-2026-09-25-r2`**
 
 Inclui duplicação de blocos, emojis nos botões, espera em horas e Automatizar próximo post.
 
@@ -8,7 +8,7 @@ Inclui duplicação de blocos, emojis nos botões, espera em horas e Automatizar
 
 1. Abra seu repositório do DirectCA$H no GitHub.
 2. Abra o arquivo `.github/workflows/atualizar-directcash.yml` e clique no lápis para editar.
-3. Copie todo o [código de atualização oficial](https://github.com/rhaianebarreto/directcash/blob/editor-2026-09-25/.github/workflows/atualizar-directcash.yml), substitua o conteúdo do seu arquivo e confirme em **Commit changes**.
+3. Copie todo o [código de atualização oficial](https://github.com/rhaianebarreto/directcash/blob/editor-2026-09-25-r2/.github/workflows/atualizar-directcash.yml), substitua o conteúdo do seu arquivo e confirme em **Commit changes**.
 
 Se esse arquivo não existir: **Add file → Create new file**, escreva o nome completo `.github/workflows/atualizar-directcash.yml`, cole o mesmo conteúdo e confirme.
 
@@ -18,12 +18,12 @@ Se em Actions já aparece o campo **Código da atualização recebido no Club**,
 
 1. No seu repositório, abra **Actions → Atualizar DirectCA$H → Run workflow**.
 2. Escolha a branch conectada à Cloudflare (geralmente **main**).
-3. No campo do código, coloque **editor-2026-09-25** e confirme **Run workflow**.
+3. No campo do código, coloque **editor-2026-09-25-r2** e confirme **Run workflow**.
 4. Aguarde a execução ficar verde.
 5. Na sua Cloudflare, abra **Workers e Pages → seu painel → Builds** e aguarde o build desse novo commit terminar com sucesso.
 6. Abra o mesmo endereço do seu painel e recarregue.
 
-Para conferir a versão, acrescente `/version.json` ao endereço do painel. Deve aparecer `editor-2026-09-25`.
+Para conferir a versão, acrescente `/version.json` ao endereço do painel. Deve aparecer `editor-2026-09-25-r2`.
 
 Se o build não começar: confira em **Configurações → Builds** se o repositório e a branch são os mesmos usados acima. O comando de implantação desta versão é `npm run deploy`. Uma execução verde no GitHub, sozinha, não confirma a publicação na Cloudflare.
 

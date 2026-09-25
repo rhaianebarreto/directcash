@@ -5,7 +5,7 @@ on:
       versao:
         description: Código da atualização recebido no Club
         required: true
-        default: editor-2026-09-25
+        default: editor-2026-09-25-r2
         type: string
 permissions:
   contents: write
@@ -23,7 +23,7 @@ jobs:
         env:
           RELEASE: ${{ inputs.versao }}
         run: |
-          [[ "$RELEASE" =~ ^editor-[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo 'Código de atualização inválido'; exit 1; }
+          [[ "$RELEASE" =~ ^editor-[0-9]{4}-[0-9]{2}-[0-9]{2}(-r[1-9][0-9]*)?$ ]] || { echo 'Código de atualização inválido'; exit 1; }
           curl --fail --location --retry 2 "https://github.com/rhaianebarreto/directcash/archive/refs/tags/$RELEASE.tar.gz" -o "$RUNNER_TEMP/directcash.tar.gz"
           mkdir -p "$RUNNER_TEMP/directcash-update"
           tar -xzf "$RUNNER_TEMP/directcash.tar.gz" -C "$RUNNER_TEMP/directcash-update" --strip-components=1

@@ -8,5 +8,11 @@
  };
  const seconds=n=>n.sendDelay?.mode==='manual'?Math.max(0,Math.min(82800,Math.round(Number(n.sendDelay.seconds)||0))):automatic(n);
  const label=n=>{const s=seconds(n);return s===null?'Aguardando duração do áudio':s===0?'Envio sem pausa':'Enviar após '+s+' s';};
- root.FlowTiming={count,automatic,seconds,label};
+ const waitLabel=n=>{
+  const total=Math.round(Number(n.seconds??Number(n.minutes)*60));
+  if(!Number.isFinite(total)||total<1)return 'Defina o tempo de espera';
+  const hours=Math.floor(total/3600),minutes=Math.floor(total%3600/60),secs=total%60;
+  return [hours?hours+' h':'',minutes?minutes+' min':'',secs?secs+' seg':''].filter(Boolean).join(' ');
+ };
+ root.FlowTiming={count,automatic,seconds,label,waitLabel};
 })(globalThis);
