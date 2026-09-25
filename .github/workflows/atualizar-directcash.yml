@@ -5,7 +5,7 @@ on:
       versao:
         description: Código da atualização recebido no Club
         required: true
-        default: editor-2026-09-25-r4
+        default: editor-2026-09-25-r5
         type: string
 permissions:
   contents: write

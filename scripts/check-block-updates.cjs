@@ -24,6 +24,14 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   const beforeEmoji=await page.evaluate(()=>mapState.map.nodes[0].choices[0].title);
   await page.locator('#node-fields .fp-button-row .fe-emoji-bar button').first().click();await page.locator('.fe-full-emoji').first().click();
   assert.notEqual(await page.evaluate(()=>mapState.map.nodes[0].choices[0].title),beforeEmoji);
+  await page.evaluate(()=>{mapState.map.nodes[0].next='';mapState.map.nodes[0].x=100;mapState.map.nodes[0].y=100;mapState.map.nodes.find(n=>n.id==='b').x=480;mapState.map.nodes.find(n=>n.id==='b').y=100;mapZoom=1;renderMap();const v=document.querySelector('#map-viewport');v.scrollLeft=0;v.scrollTop=0;});
+  const port=page.locator('.vm-node[data-node-id="a"] .vm-box-output .vm-output');
+  await port.click();await page.locator('.vm-node[data-node-id="b"] .vm-input').click();
+  assert.equal(await page.evaluate(()=>mapState.map.nodes[0].next),'b');
+  await page.evaluate(()=>{mapState.map.nodes[0].next='';renderMap();});
+  await port.scrollIntoViewIfNeeded();const from=await port.boundingBox(),to=await page.locator('.vm-node[data-node-id="b"] .vm-input').boundingBox();
+  await page.mouse.move(from.x+from.width/2,from.y+from.height/2);await page.mouse.down();await page.mouse.move(to.x+to.width/2,to.y+to.height/2,{steps:10});await page.mouse.up();
+  assert.equal(await page.evaluate(()=>mapState.map.nodes[0].next),'b');
   await page.locator('#node-fields [data-button-action="0"]').selectOption('next');
   assert.equal(await page.locator('#node-fields [data-button-target="0"]').inputValue(),'b');
   assert.equal(await page.evaluate(()=>mapState.map.nodes[0].next),'');
