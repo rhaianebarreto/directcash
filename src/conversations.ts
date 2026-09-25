@@ -36,7 +36,7 @@ export async function processInputs(env:AppEnv,a:Account,deadline=now()+18){
 async function plan(env:AppEnv,a:Account,input:Input,deadline:number){
  const data=JSON.parse(input.payload);const statements:D1PreparedStatement[]=[];
  const finish=()=>env.DB.prepare("UPDATE flow_inputs SET status='done',payload='{}',updated=? WHERE id=?").bind(now(),input.id);
- let c:Conversation|null=null, cfg:Config;
+ let c:Conversation|null=null, cfg:Config;let verifyFollow=false;
  if(input.kind==='start'){
   const r=await env.DB.prepare('SELECT * FROM rules WHERE id=? AND active=1').bind(input.rule_id).first<Rule>(),f=r&&readFlow(r);if(!r||!f){await finish().run();return;}
   const map=compile(r,f);cfg={map,node:map.start,name:'',comment:data.comment||'',engaged:!data.comment,step:0,job:'',next:'',wake:0,publicReply:r.public_reply,followup:false};
@@ -66,7 +66,7 @@ async function plan(env:AppEnv,a:Account,input:Input,deadline:number){
    }else if(c.stage==='engagement'){
     cfg.node=node?.next||'';c.stage='run';
    }else if(c.stage==='follow'){
-    if(data.quick!=='dc:'+c.id+':'+cfg.node+':follow'){await finish().run();return;}c.stage='run';
+    if(data.quick!=='dc:'+c.id+':'+cfg.node+':follow'){await finish().run();return;}verifyFollow=true;c.stage='run';
    }else if(c.stage==='email'){
     if(!emailValid(String(data.text||'').trim())){c.stage='run';}else{
      const email=String(data.text).trim().toLowerCase();statements.push(env.DB.prepare('INSERT INTO contacts(account_id,user_id,name,email,rule_id,created,updated) VALUES(?,?,?,?,?,?,?) ON CONFLICT(account_id,user_id) DO UPDATE SET name=excluded.name,email=excluded.email,rule_id=excluded.rule_id,updated=excluded.updated').bind(a.id,c.user_id,cfg.name,email,c.rule_id,now(),now()));cfg.node=node?.next||'';c.stage='run';
@@ -86,7 +86,7 @@ async function plan(env:AppEnv,a:Account,input:Input,deadline:number){
  };
  for(let step=0;c.stage==='run'&&step<35;step++){
   const n=cfg.map.nodes.find(n=>n.id===cfg.node);if(!n){c.stage='done';break;}
-  if(!cfg.engaged&&n.type!=='message'){c.stage='done';break;}
+  if(!cfg.engaged&&n.type!=='message'&&n.type!=='follow'){c.stage='done';break;}
   if(n.type==='carousel'){send({attachment:{type:'template',payload:{template_type:'generic',elements:n.cards!.map(card=>({title:fillVariables(card.title,cfg.name),subtitle:fillVariables(card.subtitle,cfg.name),image_url:card.image,...(card.buttons.length?{buttons:card.buttons.map(b=>({type:'web_url',url:b.url,title:b.title}))}:{})}))}}},'run');}
   else if(n.type==='message'){
    const text=fillVariables(n.text,cfg.name);let message:Record<string,unknown>;
@@ -98,9 +98,18 @@ async function plan(env:AppEnv,a:Account,input:Input,deadline:number){
   }else if(n.type==='wait'){if(n.seconds){if(env.FLOW_SCHEDULER||n.seconds>10||now()+n.seconds>deadline){cfg.step++;cfg.wake=now()+n.seconds;c.stage='wait';break;}await new Promise(resolve=>setTimeout(resolve,n.seconds!*1000));if(now()>=c.expires){c.stage='done';break;}cfg.node=n.next;continue;}cfg.step++;cfg.wake=now()+n.minutes*60;c.stage=cfg.wake<c.expires?'wait':'done';}
   else if(n.type==='email'){send({text:fillVariables(n.text,cfg.name)},'email');}
   else if(n.type==='follow'){
-   const profile=await graph(env,a,encodeURIComponent(c.user_id)+'?fields=is_user_follow_business');
-   if(profile.is_user_follow_business===true){cfg.node=n.next;continue;}
-   send(quickMessage(fillVariables(n.text,cfg.name),'Já segui','dc:'+c.id+':'+n.id+':follow'),'follow');
+   let prompt=fillVariables(n.text,cfg.name);
+   if(verifyFollow){
+    verifyFollow=false;
+    try{const profile=await graph(env,a,encodeURIComponent(c.user_id)+'?fields=is_user_follow_business');
+     if(profile.is_user_follow_business===true){cfg.node=n.next;continue;}
+     prompt=profile.is_user_follow_business===false?'Ainda não consegui confirmar que você segue o perfil. Siga e toque no botão novamente.':'Não foi possível verificar agora. Tente novamente em instantes.';
+    }catch{prompt='Não foi possível verificar agora. Tente novamente em instantes.';}
+   }
+   const buttons:any[]=[];
+   if(/^[a-zA-Z0-9_.]{1,30}$/.test(a.username))buttons.push({type:'web_url',title:'Ver perfil',url:'https://www.instagram.com/'+a.username+'/'});
+   buttons.push({type:'postback',title:n.followButton||'Já segui',payload:'dc:'+c.id+':'+n.id+':follow'});
+   send({attachment:{type:'template',payload:{template_type:'button',text:prompt,buttons}}},'follow');
   }else if(n.type==='tag'){statements.push(env.DB.prepare('INSERT OR IGNORE INTO contact_tags(account_id,user_id,tag,created) VALUES(?,?,?,?)').bind(a.id,c.user_id,n.tag,now()));cfg.node=n.next;}
  }
  c.config=JSON.stringify(cfg);statements.push(env.DB.prepare('INSERT INTO conversations(id,account_id,user_id,rule_id,stage,config,created,expires,updated) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET stage=excluded.stage,config=excluded.config,expires=excluded.expires,updated=excluded.updated').bind(c.id,a.id,c.user_id,c.rule_id,c.stage,c.config,c.created,c.expires,now()),finish());await env.DB.batch(statements);

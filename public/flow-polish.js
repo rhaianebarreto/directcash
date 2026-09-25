@@ -51,6 +51,7 @@
      if(reaches(target.value)){target.value=c.next||'';toast('Escolha um passo que não volte a este bloco.');return;}remember();c.next=target.value;refresh();
     };targetLabel.append(target);row.append(targetLabel);
    }
+   const order=el('div',null,'rule-actions');for(const [delta,title]of [[-1,'↑ Subir'],[1,'↓ Descer']]){const move=button(title,()=>{remember();[n.choices[i],n.choices[i+delta]]=[n.choices[i+delta],n.choices[i]];refresh();},'outline');move.disabled=i+delta<0||i+delta>=n.choices.length;move.setAttribute('aria-label',title+' botão '+(i+1));order.append(move);}row.append(order);
    row.append(button('Remover botão',()=>{if(c.next){toast('Remova a conexão deste botão antes de excluí-lo.');return;}remember();n.choices.splice(i,1);refresh();},'subtle'));
   });
   if(n.choices.length<limit)group.append(button('+ Botão',()=>{remember();n.choices.push({title:'',next:''});refresh();},'outline'));

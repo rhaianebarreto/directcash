@@ -15,8 +15,8 @@ export function validateRule(b:Record<string,unknown>):Omit<Rule,'id'|'created'>
   const comment=(flow?.channels||[trigger]).includes('comment');
   if(!name||!message||(!keywords&&flow?.match!=='any')||!['comment','dm','story'].includes(trigger)||(flow?(!flow.map&&flow.linkEnabled&&!safeLink(link)):!safeLink(link))||typeof b.active!=='boolean')throw Error('Preencha nome, palavra-chave, mensagem e um link HTTPS válido.');
   if(comment&&!flow?.nextPostAt&&!flow?.allPosts&&!/^\d+$/.test(media_id))throw Error('Escolha um post para a automação de comentários.');
-  if(flow&&!flow.map&&comment&&!flow.welcomeEnabled&&(flow.requireFollow||flow.collectEmail||flow.attachmentType||flow.followupEnabled))throw Error('Ative a DM de boas-vindas para usar condições, mídia ou acompanhamento após um comentário.');
-  if(flow?.map&&comment){const start=flow.map.nodes.find(n=>n.id===flow.map!.start)!;if(start.type!=='message'||start.mediaType||start.parts?.length)throw Error(`Bloco ${start.number} — Após um comentário, comece com uma mensagem de texto, com ou sem botões. A continuação aguarda a resposta da pessoa.`);}
+  if(flow&&!flow.map&&comment&&!flow.welcomeEnabled&&!flow.requireFollow&&(flow.collectEmail||flow.attachmentType||flow.followupEnabled))throw Error('Ative a DM de boas-vindas para usar condições, mídia ou acompanhamento após um comentário.');
+  if(flow?.map&&comment){const start=flow.map.nodes.find(n=>n.id===flow.map!.start)!;if(!['message','follow'].includes(start.type)||start.mediaType||start.parts?.length)throw Error(`Bloco ${start.number} — Após um comentário, comece com uma mensagem de texto ou a etapa Seguir. A continuação aguarda a resposta da pessoa.`);}
   if(public_reply.split('\n').filter(x=>x.trim()).some(x=>x.length>300)||public_reply.split('\n').filter(x=>x.trim()).length>10)throw Error('Use até 10 respostas públicas, com até 300 caracteres por linha.');
   return {...(flow?{flow:JSON.stringify(flow)}:{}),name,trigger,media_id:comment?media_id:'',keywords,message,link,public_reply:comment?public_reply:'',active:b.active?1:0};
 }

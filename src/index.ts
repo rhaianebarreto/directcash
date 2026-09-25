@@ -1,3 +1,4 @@
+import {exportRules,restoreRules} from './backups';
 import {BlockError} from './map';
 import {mediaFormat} from './media-format';
 
@@ -131,6 +132,10 @@ async function handle(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Respo
     const a=await account(env);if(!a)return json({error:'Conecte o Instagram primeiro.'},400);
     try{const data=await graph(env,a,`${a.id}/stories?fields=id,media_type,media_url,thumbnail_url,timestamp&limit=100`);return json({data:data.data||[]});}catch{return json({error:'Não foi possível listar os stories. Confira a conexão e se há stories ativos.'},400);}
   }
+  if(path==='/api/rules-backup'&&req.method==='GET')return json(exportRules((await env.DB.prepare('SELECT * FROM rules ORDER BY created DESC').all<any>()).results));
+  if(path==='/api/rules-backup'&&req.method==='POST'){
+    try{return json(await restoreRules(env,JSON.parse(await boundedText(req,4*1024*1024))));}catch(e){return json({error:e instanceof Error?e.message:'Não foi possível importar o backup.'},400);}
+  }
   if(path==='/api/rules'&&req.method==='GET')return json((await env.DB.prepare('SELECT * FROM rules ORDER BY created DESC').all()).results);
   if(path==='/api/manual-dispatch'&&req.method==='POST'){
     const b=await body(req),mediaId=typeof b.mediaId==='string'?b.mediaId.trim():'',commentId=typeof b.commentId==='string'?b.commentId.trim():'',userId=typeof b.userId==='string'?b.userId.trim():'',ruleId=typeof b.ruleId==='string'?b.ruleId.trim():'';
@@ -154,7 +159,7 @@ async function handle(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Respo
     const a=await account(env);
     if(r.active&&!a)return json({error:'Nenhum Instagram conectado neste perfil. Abra Configuração e conecte sua conta.'},400);
     if(r.active&&a&&!await licenseFor(env,a.id))return json({error:'O Instagram está conectado, mas o acesso não está liberado. Ative a licença ou confira TEST_ACCESS_UNTIL nas variáveis do Worker após a última implantação.'},400);
-    if(r.active&&a&&JSON.parse(r.flow||'{}').map?.nodes?.some((n:any)=>n.replyStyle==='buttons'&&n.choices?.length)){
+    if(r.active&&a&&(JSON.parse(r.flow||'{}').requireFollow||JSON.parse(r.flow||'{}').map?.nodes?.some((n:any)=>n.type==='follow'||n.replyStyle==='buttons'&&n.choices?.length))){
       try{await graph(env,a,a.id+'/subscribed_apps',{subscribed_fields:['comments','messages','messaging_postbacks']});}catch{return json({error:'Não foi possível ativar os cliques dos botões no Instagram. Confira messaging_postbacks nos webhooks do app e use Verificar conexão. Seu fluxo ainda não foi alterado.'},400);}
     }
     const id=typeof b.id==='string'?b.id:crypto.randomUUID();if(!/^[a-f0-9-]{36}$/.test(id))return json({},400);

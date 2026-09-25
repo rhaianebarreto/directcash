@@ -106,6 +106,7 @@
     while(id&&!seen.has(id)){seen.add(id);const n=mapState.map.nodes.find(x=>x.id===id);if(!n)break;
       if(n.type==='message'&&window.FlowTiming)host.append(el('small','◷ '+FlowTiming.label(n),'fe-delay-preview'));
       host.append(el('div',n.type==='wait'?'◷ '+FlowTiming.waitLabel(n):n.mediaType?(icons[n.mediaType]+' '+titles[n.mediaType]):(n.text||n.tag||'Sua mensagem aparece aqui').replace(/\{\{\s*first_name\s*\}\}/g,'Ana'),'sf-bubble'));
+      if(n.type==='follow'){host.append(el('div','Ver perfil ↗','preview-button'),el('div',n.followButton||'Já segui','preview-button'),el('small','A próxima etapa só é enviada após o clique e a confirmação de que segue.','small muted'));}
       if(n.mediaType&&n.mediaUrl&&window.flowMediaPreview)window.flowMediaPreview(host,n.mediaType,n.mediaUrl);
       for(const p of n.parts||[])host.append(el('div',p.type==='text'?p.text:p.type==='delay'?'◷ '+p.seconds+' s':titles[p.type]||p.type,'sf-bubble'));
       for(const l of [...(n.url?[{title:n.label,url:n.url}]:[]),...(n.links||[]),...n.choices.filter(c=>window.flowChoiceIsLink(c))]){const a=el('a',l.title+' ↗','preview-button');if(/^https:\/\//i.test(l.url)){a.href=l.url;a.target='_blank';a.rel='noopener noreferrer';}else a.title='Preencha um endereço HTTPS';host.append(a);}

@@ -60,6 +60,18 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   assert.equal(await page.locator('.sf-card-head').evaluateAll(heads=>heads.every(head=>head.scrollWidth<=head.clientWidth+1)),true);
   await page.evaluate(()=>newRule());await page.locator('#next-post-simple').check();assert.equal(await page.evaluate(()=>!!editorData().flow.nextPostAt&&editorData().media_id===''),true);
   await page.setViewportSize({width:390,height:844});assert.equal(await page.locator('#next-post-simple').isVisible(),true);
+  await page.evaluate(()=>{setEditorMode(false);selectedNode='a';editMap({name:'Reordenar',trigger:'dm',keywords:'quero',flow:JSON.stringify({version:1,linkEnabled:false,map:{start:'a',nodes:[{id:'a',type:'message',text:'Escolha',choices:[{title:'Abrir',action:'link',url:'https://example.com',next:''},{title:'Continuar',next:'b'}],next:'',x:100,y:100},{id:'b',type:'follow',text:'Siga para receber',choices:[],next:'',x:480,y:100}]}})});selectedNode='a';renderInspector();});
+  const originalChoices=await page.evaluate(()=>JSON.stringify(mapState.map.nodes[0].choices));
+  await page.getByRole('button',{name:'↓ Descer botão 1',exact:true}).click();assert.equal(await page.evaluate(()=>mapState.map.nodes[0].choices[0].next),'b');
+  await page.getByRole('button',{name:'↑ Subir botão 2',exact:true}).click();assert.equal(await page.evaluate(()=>JSON.stringify(mapState.map.nodes[0].choices)),originalChoices);
+  await page.evaluate(()=>{selectedNode='b';renderMap();renderInspector();});assert.equal(await page.locator('.vm-node[data-node-id="b"] .follow-buttons-preview').textContent(),'Ver perfil ↗Já segui');
+  await page.getByLabel('Texto do botão de verificação',{exact:true}).fill('Verificar ✅');await page.getByLabel('Texto do botão de verificação',{exact:true}).dispatchEvent('change');assert.equal(await page.evaluate(()=>mapState.map.nodes[1].followButton),'Verificar ✅');
+  const backup={format:'directcash-backup',version:1,rules:[{name:'Teste backup'}]};let restored=false;
+  await page.route('**/api/rules-backup',route=>{if(route.request().method()==='POST'){restored=true;return route.fulfill({json:{imported:1}});}return route.fulfill({json:backup});});
+  await page.evaluate(()=>{location.hash='flows';route();});
+  const downloadPromise=page.waitForEvent('download');await page.locator('[data-page="flows"]').getByRole('button',{name:'Exportar backup',exact:true}).click();const download=await downloadPromise;assert.deepEqual(JSON.parse(fs.readFileSync(await download.path(),'utf8')),backup);
+  const chooserPromise=page.waitForEvent('filechooser');await page.locator('[data-page="flows"]').getByRole('button',{name:'Importar backup',exact:true}).click();await (await chooserPromise).setFiles({name:'backup.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(backup))});
+  await page.getByRole('button',{name:'Importar cópias pausadas',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.flow-import-dialog[open]'));assert.equal(restored,true);
   assert.deepEqual(errors,[]);console.log('PASS: duplication, independent settings, emoji controls, hours, next-post controls, mobile and no page errors');
  }finally{await browser?.close();await new Promise(r=>server.close(r));}
 })().catch(e=>{console.error(e);process.exitCode=1;});

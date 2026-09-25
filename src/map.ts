@@ -1,5 +1,5 @@
 export type Part={type:'text'|'image'|'audio'|'video'|'delay';text:string;url:string;seconds:number};
-export type Node={replyStyle?:'quick'|'buttons';number?:number;fileName?:string;fileSize?:number;sendDelay?:{mode:'auto'|'manual';seconds:number};mediaDuration?:number;id:string;type:'message'|'carousel'|'wait'|'email'|'follow'|'tag';text:string;next:string;choices:{title:string;next:string;action?:'next'|'link';url?:string}[];minutes:number;url:string;label:string;mediaType:''|'image'|'audio'|'video'|'file';mediaUrl:string;tag:string;links?:{title:string;url:string}[];parts?:Part[];seconds?:number;cards?:{title:string;subtitle:string;image:string;buttons:{title:string;url:string}[]}[];x:number;y:number};
+export type Node={followButton?:string;replyStyle?:'quick'|'buttons';number?:number;fileName?:string;fileSize?:number;sendDelay?:{mode:'auto'|'manual';seconds:number};mediaDuration?:number;id:string;type:'message'|'carousel'|'wait'|'email'|'follow'|'tag';text:string;next:string;choices:{title:string;next:string;action?:'next'|'link';url?:string}[];minutes:number;url:string;label:string;mediaType:''|'image'|'audio'|'video'|'file';mediaUrl:string;tag:string;links?:{title:string;url:string}[];parts?:Part[];seconds?:number;cards?:{title:string;subtitle:string;image:string;buttons:{title:string;url:string}[]}[];x:number;y:number};
 export type MapFlow={start:string;nodes:Node[]};
 export class BlockError extends Error{constructor(public nodeId:string,public blockNumber:number,message:string){super(`Bloco ${blockNumber} — ${message}`);}}
 export function validateMap(input:any):MapFlow{
@@ -35,9 +35,10 @@ export function validateMap(input:any):MapFlow{
   if(b.sendDelay!==undefined){const d=b.sendDelay;if(!d||!['auto','manual'].includes(d.mode)||!Number.isInteger(d.seconds)||d.seconds<0||d.seconds>82800)throw Error('Confira o tempo de envio da mensagem.');sendDelay={mode:d.mode,seconds:d.seconds};}
   if(b.mediaDuration!==undefined){if(typeof b.mediaDuration!=='number'||!Number.isFinite(b.mediaDuration)||b.mediaDuration<=0||b.mediaDuration>82800)throw Error('Duração do áudio inválida.');mediaDuration=b.mediaDuration;}
   if(mediaType==='audio'&&sendDelay?.mode==='auto'&&!mediaDuration)throw Error('Aguarde carregar a duração do áudio ou defina o tempo manualmente.');
+  if(type==='follow'&&Array.from(s('followButton',40)||'Já segui').length>20)throw Error('O botão de verificação deve ter até 20 caracteres.');
   const fileName=s('fileName',200),fileSize=Number(b.fileSize||0);
   if(!Number.isSafeInteger(fileSize)||fileSize<0||fileSize>10485760)throw Error('Tamanho do arquivo inválido.');
-  return {replyStyle,number,fileName,fileSize,sendDelay,mediaDuration,links:links.map((l:any)=>({title:l.title.trim(),url:l.url})),parts,cards,id,type:type as Node['type'],text,next,choices:parsed,minutes,seconds,url,label:s('label',20)||'Abrir link',mediaType:mediaType as Node['mediaType'],mediaUrl,tag,x:Math.max(0,Math.min(4000,Number(b.x)||0)),y:Math.max(0,Math.min(4000,Number(b.y)||0))};
+  return {followButton:type==='follow'?(s('followButton',40)||'Já segui'):undefined,replyStyle,number,fileName,fileSize,sendDelay,mediaDuration,links:links.map((l:any)=>({title:l.title.trim(),url:l.url})),parts,cards,id,type:type as Node['type'],text,next,choices:parsed,minutes,seconds,url,label:s('label',20)||'Abrir link',mediaType:mediaType as Node['mediaType'],mediaUrl,tag,x:Math.max(0,Math.min(4000,Number(b.x)||0)),y:Math.max(0,Math.min(4000,Number(b.y)||0))};
   }catch(e){throw new BlockError(String(b?.id||''),number,e instanceof Error?e.message:'Confira este bloco.');}
  });
  const ids=new Set(nodes.map(n=>n.id));if(ids.size!==nodes.length||!ids.has(input.start))throw Error('Escolha um bloco inicial válido.');
