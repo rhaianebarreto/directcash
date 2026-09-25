@@ -68,10 +68,19 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   await page.getByLabel('Texto do botão de verificação',{exact:true}).fill('Verificar ✅');await page.getByLabel('Texto do botão de verificação',{exact:true}).dispatchEvent('change');assert.equal(await page.evaluate(()=>mapState.map.nodes[1].followButton),'Verificar ✅');
   const backup={format:'directcash-backup',version:1,rules:[{name:'Teste backup'}]};let restored=false;
   await page.route('**/api/rules-backup',route=>{if(route.request().method()==='POST'){restored=true;return route.fulfill({json:{imported:1}});}return route.fulfill({json:backup});});
-  await page.evaluate(()=>{location.hash='flows';route();});
-  const downloadPromise=page.waitForEvent('download');await page.locator('[data-page="flows"]').getByRole('button',{name:'Exportar backup',exact:true}).click();const download=await downloadPromise;assert.deepEqual(JSON.parse(fs.readFileSync(await download.path(),'utf8')),backup);
-  const chooserPromise=page.waitForEvent('filechooser');await page.locator('[data-page="flows"]').getByRole('button',{name:'Importar backup',exact:true}).click();await (await chooserPromise).setFiles({name:'backup.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(backup))});
+  await page.evaluate(()=>{location.hash='setup';route();});
+  const downloadPromise=page.waitForEvent('download');await page.locator('[data-page="setup"]').getByRole('button',{name:'Exportar backup',exact:true}).click();const download=await downloadPromise;assert.deepEqual(JSON.parse(fs.readFileSync(await download.path(),'utf8')),backup);
+  const chooserPromise=page.waitForEvent('filechooser');await page.locator('[data-page="setup"]').getByRole('button',{name:'Importar backup',exact:true}).click();await (await chooserPromise).setFiles({name:'backup.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(backup))});
   await page.getByRole('button',{name:'Importar cópias pausadas',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.flow-import-dialog[open]'));assert.equal(restored,true);
+  let deletedIds=[];await page.route('**/api/rules-bulk-delete',route=>{deletedIds=route.request().postDataJSON().ids;return route.fulfill({json:{deleted:deletedIds.length}});});
+  await page.evaluate(()=>{rules=[{id:'11111111-1111-1111-1111-111111111111',name:'Um',trigger:'dm',keywords:'oi',created:1,active:0,flow:'{}'},{id:'22222222-2222-2222-2222-222222222222',name:'Dois',trigger:'dm',keywords:'oi',created:1,active:0,flow:'{}'}];location.hash='automations';route();renderRules();});
+  await page.getByRole('checkbox',{name:'Selecionar Um',exact:true}).check();await page.locator('[data-page="automations"]').getByRole('button',{name:'Excluir selecionados',exact:true}).click();
+  await page.locator('dialog[open]').getByRole('button',{name:'Cancelar',exact:true}).click();assert.deepEqual(deletedIds,[]);
+  await page.locator('[data-page="automations"]').getByRole('button',{name:'Excluir selecionados',exact:true}).click();await page.locator('dialog[open]').getByRole('button',{name:'Confirmar exclusão',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('dialog[open]'));assert.deepEqual(deletedIds,['11111111-1111-1111-1111-111111111111']);
+  await page.evaluate(()=>{rules=[1,2].map(i=>({id:String(i).repeat(8)+'-'+String(i).repeat(4)+'-'+String(i).repeat(4)+'-'+String(i).repeat(4)+'-'+String(i).repeat(12),name:'Fluxo '+i,trigger:'dm',keywords:'oi',created:1,active:0,flow:JSON.stringify({version:1,map:{start:'a',nodes:[]}})}));location.hash='flows';route();renderFlows();});
+  await page.locator('[data-page="flows"]').getByRole('checkbox',{name:'Selecionar todos os exibidos',exact:true}).check();assert.equal(await page.locator('[data-page="flows"] .bulk-rule-check:checked').count(),2);
+  await page.locator('[data-page="flows"]').getByRole('button',{name:'Limpar seleção',exact:true}).click();assert.equal(await page.locator('[data-page="flows"] .bulk-rule-check:checked').count(),0);
+  assert.equal(await page.locator('[data-page="flows"]').getByRole('button',{name:'Exportar backup',exact:true}).count(),0);
   assert.deepEqual(errors,[]);console.log('PASS: duplication, independent settings, emoji controls, hours, next-post controls, mobile and no page errors');
  }finally{await browser?.close();await new Promise(r=>server.close(r));}
 })().catch(e=>{console.error(e);process.exitCode=1;});

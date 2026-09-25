@@ -1,6 +1,6 @@
 # Atualização DirectCA$H — passo a passo para alunas
 
-**Código da atualização: `editor-2026-09-25-r8`**
+**Código da atualização: `editor-2026-09-25-r9`**
 
 Inclui duplicação de blocos, emojis nos botões, espera em horas e Automatizar próximo post.
 
@@ -8,22 +8,22 @@ Inclui duplicação de blocos, emojis nos botões, espera em horas e Automatizar
 
 1. Abra seu repositório do DirectCA$H no GitHub.
 2. Abra o arquivo `.github/workflows/atualizar-directcash.yml` e clique no lápis para editar.
-3. Copie todo o [código de atualização oficial](https://github.com/rhaianebarreto/directcash/blob/editor-2026-09-25-r8/.github/workflows/atualizar-directcash.yml), substitua o conteúdo do seu arquivo e confirme em **Commit changes**.
+3. Copie todo o [código de atualização oficial](https://github.com/rhaianebarreto/directcash/blob/editor-2026-09-25-r9/.github/workflows/atualizar-directcash.yml), substitua o conteúdo do seu arquivo e confirme em **Commit changes**.
 
 Se esse arquivo não existir: **Add file → Create new file**, escreva o nome completo `.github/workflows/atualizar-directcash.yml`, cole o mesmo conteúdo e confirme.
 
-Se você já instalou a revisão `editor-2026-09-25-r2` com o código de atualização daquela revisão, pode pular essa preparação. Nas versões anteriores, substitua o arquivo conforme acima para aceitar o código com `-r8`.
+Se você já instalou a revisão `editor-2026-09-25-r2` com o código de atualização daquela revisão, pode pular essa preparação. Nas versões anteriores, substitua o arquivo conforme acima para aceitar o código com `-r9`.
 
 ## 2. Aplicar a atualização
 
 1. No seu repositório, abra **Actions → Atualizar DirectCA$H → Run workflow**.
 2. Escolha a branch conectada à Cloudflare (geralmente **main**).
-3. No campo do código, coloque **editor-2026-09-25-r8** e confirme **Run workflow**.
+3. No campo do código, coloque **editor-2026-09-25-r9** e confirme **Run workflow**.
 4. Aguarde a execução ficar verde.
 5. Na sua Cloudflare, abra **Workers e Pages → seu painel → Builds** e aguarde o build desse novo commit terminar com sucesso.
 6. Abra o mesmo endereço do seu painel e recarregue.
 
-Para conferir a versão, acrescente `/version.json` ao endereço do painel. Deve aparecer `editor-2026-09-25-r8`.
+Para conferir a versão, acrescente `/version.json` ao endereço do painel. Deve aparecer `editor-2026-09-25-r9`.
 
 Se o build não começar: confira em **Configurações → Builds** se o repositório e a branch são os mesmos usados acima. O comando de implantação desta versão é `npm run deploy`. Uma execução verde no GitHub, sozinha, não confirma a publicação na Cloudflare.
 
@@ -53,9 +53,13 @@ Sem botões de resposta, o fluxo segue essa conexão. Com botões de resposta, e
 
 ## Backup, ordem dos botões e verificação de seguidores
 
-- **Backup:** em Fluxos ou Automações, clique em Exportar backup para baixar um JSON com os dois tipos do perfil atual. Para restaurar, clique em Importar backup, escolha o JSON e confirme. São criadas cópias pausadas, sem substituir as existentes. Revise e ative quando estiverem prontas. O backup guarda configurações e links dos anexos; não copia os arquivos de mídia nem senhas ou contatos.
+- **Backup:** em Configurações → Backup de fluxos e automações, clique em Exportar backup para baixar um JSON com os dois tipos do perfil atual. Para restaurar, clique em Importar backup, escolha o JSON e confirme. São criadas cópias pausadas, sem substituir as existentes. Revise e ative quando estiverem prontas. O backup guarda configurações e links dos anexos; não copia os arquivos de mídia nem senhas ou contatos.
 - **Ordem dos botões:** edite a mensagem e use Subir ou Descer junto a cada botão. O texto, o link e o destino se movem juntos. Salve o fluxo.
 - **Seguir antes de entregar:** adicione Só para quem segue, configure o texto e o botão de verificação. No mapa, defina essa caixa como início ou ligue o início a ela. Conecte sua bolinha à entrega e salve o fluxo ativo. A pessoa recebe Ver perfil e Já segui (ou seu texto personalizado). O clique consulta a Meta e só libera a próxima etapa se a resposta confirmar que segue. Se não for possível verificar, a pessoa pode tentar novamente; o conteúdo fica bloqueado. Em automações simples, marque a condição de seguir e desative as boas-vindas se quiser começar diretamente por ela.
 - **Palavras-chave:** QUERO, Quero e quero são equivalentes em comentários, Direct e stories, tanto em fluxos quanto em automações. Não cadastre as três variações.
 
 A verificação real depende de a Meta disponibilizar essa informação e das permissões da conta conectada. Os testes automatizados simulam essas respostas; após atualizar, teste a etapa com outro perfil antes de usar em uma campanha.
+
+## Excluir vários itens
+
+Abra Fluxos ou Automações, marque os itens desejados (ou Selecionar todos os exibidos) e clique em Excluir selecionados. Confira os nomes na confirmação e confirme apenas os itens que deseja apagar. A exclusão é permanente. Os envios ainda pendentes desses itens são cancelados; mensagens já enviadas não são apagadas do Instagram. O backup fica em Configurações.

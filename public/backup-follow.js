@@ -4,11 +4,10 @@
   const data=await api('rules-backup');if(!data.rules.length){toast('Não há fluxos ou automações neste perfil.');return;}
   const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=el('a');a.href=url;a.download='directcash-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
  }
- for(const page of ['flows','automations']){
-  const bar=el('div',null,'rule-actions');bar.style.cssText='flex-wrap:wrap;margin-bottom:20px';
-  bar.append(button('Exportar backup',()=>run(exportBackup),'outline'),button('Importar backup',()=>file.click(),'outline'));
-  document.querySelector('[data-page="'+page+'"] .page-title').after(bar);
- }
+ const backupCard=el('article',null,'card');backupCard.id='backup-settings';
+ backupCard.append(el('h2','Backup de fluxos e automações'),el('p','Exporte as configurações do perfil atual ou restaure um backup como cópias pausadas.','muted'));
+ const backupActions=el('div',null,'rule-actions');backupActions.style.flexWrap='wrap';backupActions.append(button('Exportar backup',()=>run(exportBackup),'outline'),button('Importar backup',()=>file.click(),'outline'));backupCard.append(backupActions);
+ document.querySelector('[data-page="setup"] .page-title').after(backupCard);
  file.onchange=()=>run(async()=>{
   try{
    const selected=file.files[0];if(!selected)return;if(selected.size>4*1024*1024)throw Error('Use um backup de até 4 MB.');

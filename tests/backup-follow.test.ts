@@ -7,6 +7,7 @@ import {keywordMatches} from '../src/flow';
 import {exportRules,decodeBackup,restoreRules} from '../src/backups';
 import {ingest,drain,now,type AppEnv} from '../src/meta';
 import {queueInput} from '../src/conversations';
+import {deleteRules} from '../src/bulk-rules';
 
 const rule=()=>validateRule({name:'Entrega',trigger:'comment',keywords:'QuErO',media_id:'',message:'Conteúdo',link:'',public_reply:'',active:true,flow:{version:1,allPosts:true,linkEnabled:false,map:{start:'gate',nodes:[{id:'gate',type:'follow',text:'Siga para receber',followButton:'Já segui ✅',next:'content'},{id:'content',type:'message',text:'CONTEUDO LIBERADO'}]}}});
 test('keywords ignore letter case for exact, contains and legacy rules',()=>{
@@ -18,6 +19,22 @@ async function setup(){
  const env=await mf.getBindings<AppEnv>();for(const file of ['0001_initial.sql','0002_conversations.sql','0003_profiles.sql'])for(const sql of readFileSync('migrations/'+file,'utf8').split(';').map(s=>s.trim()).filter(Boolean))await env.DB.prepare(sql).run();
  return {mf,env};
 }
+test('bulk deletion validates selection, preserves other rules and cancels only selected pending work',async()=>{
+ const {mf,env}=await setup();try{
+  await restoreRules(env,exportRules([{...rule(),id:'a',created:now()},{...rule(),name:'Preservar',id:'b',created:now()}]));
+  const rows=(await env.DB.prepare('SELECT id FROM rules ORDER BY name').all<{id:string}>()).results;const [chosen,other]=rows.map(r=>r.id);
+  for(const [i,id] of [chosen,other].entries())await env.DB.prepare('INSERT INTO jobs(id,account_id,rule_id,recipient,kind,text,created,expires,updated) VALUES(?,?,?,?,?,?,?,?,?)').bind('j'+i,'1',id,'2','dm','Teste',now(),now()+86400,now()).run();
+  await env.DB.prepare("INSERT INTO conversations VALUES('c','1','2',?,'wait','{}',?,?,?)").bind(chosen,now(),now()+86400,now()).run();
+  await env.DB.prepare("INSERT INTO flow_inputs(id,account_id,user_id,rule_id,kind,payload,created,expires,updated) VALUES('i','1','2',?,'start','{}',?,?,?)").bind(chosen,now(),now()+86400,now()).run();
+  await assert.rejects(()=>deleteRules(env,[]));await assert.rejects(()=>deleteRules(env,[chosen,'invalid']));assert.equal((await env.DB.prepare('SELECT count(*) n FROM rules').first<any>()).n,2);
+  assert.equal((await deleteRules(env,[chosen,chosen])).deleted,1);
+  assert.equal((await env.DB.prepare('SELECT id FROM rules').first<any>()).id,other);
+  assert.equal((await env.DB.prepare("SELECT status FROM jobs WHERE id='j0'").first<any>()).status,'cancelled');
+  assert.equal((await env.DB.prepare("SELECT status FROM jobs WHERE id='j1'").first<any>()).status,'pending');
+  assert.equal((await env.DB.prepare("SELECT stage FROM conversations WHERE id='c'").first<any>()).stage,'done');
+  assert.equal((await env.DB.prepare("SELECT status FROM flow_inputs WHERE id='i'").first<any>()).status,'failed');
+ }finally{await mf.dispose();}
+});
 test('backup round-trips maps and simple automations as paused copies and rejects invalid batches',async()=>{
  const {mf,env}=await setup();try{
   const r={...rule(),id:'original',created:now()} as Rule;

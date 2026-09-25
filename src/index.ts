@@ -1,3 +1,4 @@
+import {deleteRules} from './bulk-rules';
 import {exportRules,restoreRules} from './backups';
 import {BlockError} from './map';
 import {mediaFormat} from './media-format';
@@ -132,6 +133,7 @@ async function handle(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Respo
     const a=await account(env);if(!a)return json({error:'Conecte o Instagram primeiro.'},400);
     try{const data=await graph(env,a,`${a.id}/stories?fields=id,media_type,media_url,thumbnail_url,timestamp&limit=100`);return json({data:data.data||[]});}catch{return json({error:'Não foi possível listar os stories. Confira a conexão e se há stories ativos.'},400);}
   }
+  if(path==='/api/rules-bulk-delete'&&req.method==='POST'){try{return json(await deleteRules(env,(await body(req)).ids));}catch(e){return json({error:e instanceof Error?e.message:'Falha ao excluir.'},400);}}
   if(path==='/api/rules-backup'&&req.method==='GET')return json(exportRules((await env.DB.prepare('SELECT * FROM rules ORDER BY created DESC').all<any>()).results));
   if(path==='/api/rules-backup'&&req.method==='POST'){
     try{return json(await restoreRules(env,JSON.parse(await boundedText(req,4*1024*1024))));}catch(e){return json({error:e instanceof Error?e.message:'Não foi possível importar o backup.'},400);}
