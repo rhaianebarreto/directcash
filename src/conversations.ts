@@ -62,7 +62,7 @@ async function plan(env:AppEnv,a:Account,input:Input,deadline:number){
    c.expires=input.expires;cfg.engaged=true;
    if(c.stage==='choice'){
     const prefix='dc:'+c.id+':'+cfg.node+':';if(typeof data.quick!=='string'||!data.quick.startsWith(prefix)){await finish().run();return;}
-    const choice=node?.choices[Number(data.quick.slice(prefix.length))];if(!choice||choice.action==='link'||choice.url){await finish().run();return;}cfg.node=choice.next;c.stage='run';
+    const choice=node?.choices[Number(data.quick.slice(prefix.length))];if(!choice||choice.action==='link'||choice.url){await finish().run();return;}cfg.node=choice.next||node?.next||'';c.stage='run';
    }else if(c.stage==='engagement'){
     cfg.node=node?.next||'';c.stage='run';
    }else if(c.stage==='follow'){

@@ -53,11 +53,11 @@
    }
    row.append(button('Remover botão',()=>{if(c.next){toast('Remova a conexão deste botão antes de excluí-lo.');return;}remember();n.choices.splice(i,1);refresh();},'subtle'));
   });
-  if(n.choices.length<limit)group.append(button('+ Botão',()=>{remember();n.choices.push({title:'',next:n.next||''});n.next='';refresh();},'outline'));
-  if(!n.choices.some(c=>!window.flowChoiceIsLink(c))){
+  if(n.choices.length<limit)group.append(button('+ Botão',()=>{remember();n.choices.push({title:'',next:''});refresh();},'outline'));
+  {
    const label=el('label','Continuar após esta mensagem'),target=el('select');target.dataset.blockNext='';target.add(new Option('Encerrar neste bloco',''));
    for(const node of mapState.map.nodes)if(node.id!==n.id)target.add(new Option('Bloco '+node.number+' — '+(node.text||nodeNames[node.type]).slice(0,50),node.id));
-   target.value=n.next||'';target.onchange=()=>{const seen=new Set(),reaches=id=>{if(id===n.id)return true;if(!id||seen.has(id))return false;seen.add(id);const node=mapState.map.nodes.find(x=>x.id===id);return !!node&&[node.next,...node.choices.map(c=>c.next)].some(reaches);};if(reaches(target.value)){target.value=n.next||'';toast('Escolha um passo que não volte a este bloco.');return;}remember();n.next=target.value;refresh();};label.append(target);group.append(label,el('p','O link abre ao clicar. A continuação segue a conexão do bloco, respeitando a janela de mensagens do Instagram.','small muted'));
+   target.value=n.next||'';target.onchange=()=>{const seen=new Set(),reaches=id=>{if(id===n.id)return true;if(!id||seen.has(id))return false;seen.add(id);const node=mapState.map.nodes.find(x=>x.id===id);return !!node&&[node.next,...node.choices.map(c=>c.next)].some(reaches);};if(reaches(target.value)){target.value=n.next||'';toast('Escolha um passo que não volte a este bloco.');return;}remember();n.next=target.value;refresh();};label.append(target);group.append(label,el('p','Sem respostas, a caixa continua por esta conexão. Com respostas, ela é o destino dos botões sem caminho próprio. O link apenas abre o endereço.','small muted'));
   }
   window.flowEmojiFields?.(group);
  };

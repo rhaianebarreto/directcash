@@ -36,7 +36,7 @@
   port.onpointerdown=e=>{e.preventDefault();e.stopPropagation();pending={source,index};port.setPointerCapture(e.pointerId);const start=point(port),ghost=svgEl('path',{d:curve(start,start),'class':'vm-ghost'});svg.append(ghost);let moved=false;
    port.onpointermove=ev=>{moved=true;const r=canvas.getBoundingClientRect();ghost.setAttribute('d',curve(start,{x:(ev.clientX-r.x)/mapZoom,y:(ev.clientY-r.y)/mapZoom}));};
    port.onpointerup=ev=>{port.onpointermove=null;port.onpointerup=null;ghost.remove();if(port.hasPointerCapture(ev.pointerId))port.releasePointerCapture(ev.pointerId);const hit=document.elementFromPoint(ev.clientX,ev.clientY),t=hit?.closest('.vm-node[data-node-id]');if(t&&t.dataset.nodeId!==(source==='trigger'?'trigger':source.id))connect(source,index,t.dataset.nodeId);else if(moved&&hit?.closest('#map-viewport')&&!hit.closest('.vm-node')){pending=null;viewport.classList.remove('vm-connecting');chooseNextStep(source==='trigger'?null:source,index<0?undefined:index);}else viewport.classList.add('vm-connecting');};
-   port.onpointercancel=()=>{ghost.remove();pending=null;port.onpointermove=null;viewport.classList.remove('vm-connecting');};
+   port.onpointercancel=()=>{ghost.remove();if(port.isConnected){pending=null;viewport.classList.remove('vm-connecting');}port.onpointermove=null;};
   };
   // Keyboard users connect by choosing an output and then an input.
   port.onclick=e=>{if(e.detail===0){pending={source,index};viewport.classList.add('vm-connecting');toast('Escolha o ponto de entrada de outra caixa.');}};
@@ -45,7 +45,7 @@
  function drag(head,box,n){head.onpointerdown=e=>{if(e.button!==0||e.target.closest('button'))return;e.preventDefault();e.stopPropagation();head.setPointerCapture(e.pointerId);const sx=e.clientX,sy=e.clientY,ox=n.x,oy=n.y;let moved=false;head.onpointermove=ev=>{if(!moved&&Math.abs(ev.clientX-sx)+Math.abs(ev.clientY-sy)>4){remember();moved=true;}if(!moved)return;n.x=Math.max(20,Math.min(3800,ox+(ev.clientX-sx)/mapZoom));n.y=Math.max(20,Math.min(3800,oy+(ev.clientY-sy)/mapZoom));box.style.left=n.x+'px';box.style.top=n.y+'px';drawEdges();};head.onpointerup=()=>{head.onpointermove=null;if(moved)renderMap();};head.onpointercancel=()=>{head.onpointermove=null;renderMap();};};}
  function pickOutput(n,done){
   if(!n.choices.some(c=>!window.flowChoiceIsLink(c))){done(-1);return;}
-  const d=el('dialog',null,'sf-picker');d.append(el('h2','Qual resposta vai por este caminho?'));
+  const d=el('dialog',null,'sf-picker');d.append(el('h2','Qual saída deseja conectar?'),button('Próximo passo da caixa',()=>{d.close();done(-1);},'outline'));
   n.choices.forEach((c,i)=>{if(!window.flowChoiceIsLink(c))d.append(button(c.title||'Resposta '+(i+1),()=>{d.close();done(i);},'outline'));});
   d.append(button('Cancelar',()=>d.close(),'subtle'));d.addEventListener('close',()=>{d.remove();renderMap();});document.body.append(d);d.showModal();
  }
@@ -72,7 +72,7 @@
    const input=button('',()=>{if(pending)connect(pending.source,pending.index,n.id);else{selectedNode=n.id;renderMap();renderInspector();}},'vm-input');input.dataset.target=n.id;input.setAttribute('aria-label','Entrada de '+title(n));input.title='Solte aqui a conexão';box.append(input);
    const description=n.type==='wait'?'◷ '+FlowTiming.waitLabel(n):n.mediaType?(n.mediaUrl?'Arquivo pronto: '+({audio:'áudio',image:'imagem',video:'vídeo',file:'documento'}[n.mediaType]):'Adicione '+({audio:'um áudio',image:'uma imagem',video:'um vídeo',file:'um documento'}[n.mediaType])):n.text||n.tag||'Clique para editar';box.append(el('p',description));if(n.type==='message'&&window.FlowTiming){const timing=button('◷ '+FlowTiming.label(n),()=>{window.flowOpenNode(n);requestAnimationFrame(()=>document.querySelector('.fe-delay select')?.focus());},'fe-node-delay');timing.setAttribute('aria-label','Editar tempo: '+FlowTiming.label(n));box.append(timing);}
    for(const l of n.links||[])box.append(el('small',l.title+' ↗','vm-link'));if(n.url)box.append(el('small',n.label+' ↗','vm-link'));
-   n.choices.forEach((c,i)=>{if(window.flowChoiceIsLink(c)){const link=button((c.title||'Botão de link')+' ↗',()=>window.flowOpenNode(n,i),'vm-link');link.dataset.choiceIndex=i;box.append(link);}else box.append(output(n,i,c.title||'Resposta '+(i+1)));});if(!n.choices.some(c=>!window.flowChoiceIsLink(c))){const continuation=output(n,-1,'Saída da caixa');continuation.classList.add('vm-box-output');box.append(continuation);}
+   n.choices.forEach((c,i)=>{if(window.flowChoiceIsLink(c)){const link=button((c.title||'Botão de link')+' ↗',()=>window.flowOpenNode(n,i),'vm-link');link.dataset.choiceIndex=i;box.append(link);}else box.append(output(n,i,c.title||'Resposta '+(i+1)));});{const continuation=output(n,-1,'Próximo passo da caixa');const port=continuation.querySelector('.vm-output');port.classList.add('vm-box-port');box.append(port);}
    box.onclick=e=>{if(e.target.closest('button,[role=button]'))return;if(pending){connect(pending.source,pending.index,n.id);return;}selectedNode=n.id;renderMap();renderInspector();window.flowOpenNode?.(n);};connectBox(box,n);nodes.append(box);
   }
   drawEdges();$('#undo-flow').disabled=!undoStack.length;$('#redo-flow').disabled=!redoStack.length;

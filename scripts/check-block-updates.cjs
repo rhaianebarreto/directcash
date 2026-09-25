@@ -25,7 +25,7 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   await page.locator('#node-fields .fp-button-row .fe-emoji-bar button').first().click();await page.locator('.fe-full-emoji').first().click();
   assert.notEqual(await page.evaluate(()=>mapState.map.nodes[0].choices[0].title),beforeEmoji);
   await page.evaluate(()=>{mapState.map.nodes[0].next='';mapState.map.nodes[0].x=100;mapState.map.nodes[0].y=100;mapState.map.nodes.find(n=>n.id==='b').x=480;mapState.map.nodes.find(n=>n.id==='b').y=100;mapZoom=1;renderMap();const v=document.querySelector('#map-viewport');v.scrollLeft=0;v.scrollTop=0;});
-  const port=page.locator('.vm-node[data-node-id="a"] .vm-box-output .vm-output');
+  const port=page.locator('.vm-node[data-node-id="a"] .vm-box-port');
   await port.click();await page.locator('.vm-node[data-node-id="b"] .vm-input').click();
   assert.equal(await page.evaluate(()=>mapState.map.nodes[0].next),'b');
   await page.evaluate(()=>{mapState.map.nodes[0].next='';renderMap();});
@@ -46,7 +46,13 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   await page.locator('#node-fields .fp-button-row').nth(1).locator('input[type=url]').fill('https://example.com/guia');
   await page.locator('#node-fields .fp-button-row').nth(1).locator('input[type=url]').dispatchEvent('change');
   assert.equal(await page.evaluate(()=>mapState.map.nodes[0].choices[1].url),'https://example.com/guia');
-  assert.equal(await page.locator('.vm-node[data-node-id="a"] .vm-output').count(),1);
+  assert.equal(await page.locator('.vm-node[data-node-id="a"] .vm-output').count(),2);
+  assert.equal(await page.locator('.vm-node[data-node-id]').evaluateAll(boxes=>boxes.every(box=>box.querySelectorAll(':scope > .vm-box-port').length===1)),true);
+  assert.equal(await page.getByText('Saída da caixa',{exact:true}).count(),0);
+  await page.locator('#node-fields .fp-button-row').nth(1).locator('input[type=url]').press('Tab');
+  await page.evaluate(()=>{mapState.map.nodes=mapState.map.nodes.filter(n=>['a','b'].includes(n.id));renderMap();});
+  await page.locator('.vm-node[data-node-id="a"] > .vm-box-port').click();await page.locator('.vm-node[data-node-id="b"] .vm-input').click();
+  assert.equal(await page.evaluate(()=>mapState.map.nodes[0].next),'b');
   await page.evaluate(()=>setEditorMode(true));await page.locator('.sf-card[data-node="b"] .sf-card-head').first().getByRole('button',{name:'Editar',exact:true}).click();
   await page.locator('.sf-card[data-node="b"] .sf-fields select').first().selectOption('hours');
   assert.equal(await page.locator('.sf-card[data-node="b"] .sf-fields input[type=number]').first().inputValue(),'3');
