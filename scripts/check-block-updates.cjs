@@ -28,7 +28,11 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   assert.equal(await page.locator('#node-fields [data-button-target="0"]').inputValue(),'b');
   assert.equal(await page.evaluate(()=>mapState.map.nodes[0].next),'');
   await page.locator('#node-fields [data-button-action="0"]').selectOption('link');
-  assert.equal(await page.locator('#node-fields [data-button-action="0"]').inputValue(),'next');
+  assert.equal(await page.locator('#node-fields [data-button-action="0"]').inputValue(),'link');
+  assert.equal(await page.locator('#node-fields [data-block-next]').inputValue(),'b');
+  assert.equal(await page.evaluate(()=>mapState.map.nodes[0].next),'b');
+  assert.deepEqual(await page.evaluate(()=>{const source=mapState.map.nodes[0],added=addConnected('wait',source);const result={connected:source.next===added.id,retained:added.next==='b'};mapState.map.nodes=mapState.map.nodes.filter(n=>n!==added);source.next='b';selectedNode='a';renderMap();renderInspector();return result;}),{connected:true,retained:true});
+  await page.locator('#node-fields [data-button-action="0"]').selectOption('next');
   await page.locator('#node-fields').getByRole('button',{name:'+ Botão',exact:true}).click();
   await page.locator('#node-fields [data-button-action="1"]').selectOption('link');
   await page.locator('#node-fields .fp-button-row').nth(1).locator('input[type=url]').fill('https://example.com/guia');

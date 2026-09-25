@@ -36,9 +36,9 @@
    const label=el('label','Ao clicar'),action=el('select');action.dataset.buttonAction=String(i);action.add(new Option('Ir para o próximo passo','next'));action.add(new Option('Abrir um link','link'));action.value=window.flowChoiceIsLink(c)?'link':'next';label.append(action);row.append(label);
    action.onchange=()=>{
     if(action.value==='link'&&n.choices.length>3){action.value='next';toast('Para usar links, mantenha até 3 botões nesta mensagem. Nenhum botão foi removido.');return;}
-    if(action.value==='link'&&c.next){action.value='next';toast('Remova a conexão deste botão no mapa antes de trocar para link. O bloco conectado foi preservado.');return;}
+    if(action.value==='link'&&c.next&&n.choices.some(x=>x!==c&&!window.flowChoiceIsLink(x))){action.value='next';toast('Este botão possui um caminho próprio. Mantenha-o como resposta e adicione outro botão para o link.');return;}
     remember();c.action=action.value;
-    if(c.action==='link'){c.url='';c.next='';n.replyStyle='buttons';}
+    if(c.action==='link'){n.next=c.next||n.next||'';c.url='';c.next='';n.replyStyle='buttons';}
     else{delete c.url;c.next=n.next||'';n.next='';}
     refresh();
    };
@@ -54,6 +54,11 @@
    row.append(button('Remover botão',()=>{if(c.next){toast('Remova a conexão deste botão antes de excluí-lo.');return;}remember();n.choices.splice(i,1);refresh();},'subtle'));
   });
   if(n.choices.length<limit)group.append(button('+ Botão',()=>{remember();n.choices.push({title:'',next:n.next||''});n.next='';refresh();},'outline'));
+  if(!n.choices.some(c=>!window.flowChoiceIsLink(c))){
+   const label=el('label','Continuar após esta mensagem'),target=el('select');target.dataset.blockNext='';target.add(new Option('Encerrar neste bloco',''));
+   for(const node of mapState.map.nodes)if(node.id!==n.id)target.add(new Option('Bloco '+node.number+' — '+(node.text||nodeNames[node.type]).slice(0,50),node.id));
+   target.value=n.next||'';target.onchange=()=>{const seen=new Set(),reaches=id=>{if(id===n.id)return true;if(!id||seen.has(id))return false;seen.add(id);const node=mapState.map.nodes.find(x=>x.id===id);return !!node&&[node.next,...node.choices.map(c=>c.next)].some(reaches);};if(reaches(target.value)){target.value=n.next||'';toast('Escolha um passo que não volte a este bloco.');return;}remember();n.next=target.value;refresh();};label.append(target);group.append(label,el('p','O link abre ao clicar. A continuação segue a conexão do bloco, respeitando a janela de mensagens do Instagram.','small muted'));
+  }
   window.flowEmojiFields?.(group);
  };
  // Keep all configuration controls, but group them by the order of a new flow.
