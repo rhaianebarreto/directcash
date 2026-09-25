@@ -44,9 +44,9 @@
  }
  function drag(head,box,n){head.onpointerdown=e=>{if(e.button!==0||e.target.closest('button'))return;e.preventDefault();e.stopPropagation();head.setPointerCapture(e.pointerId);const sx=e.clientX,sy=e.clientY,ox=n.x,oy=n.y;let moved=false;head.onpointermove=ev=>{if(!moved&&Math.abs(ev.clientX-sx)+Math.abs(ev.clientY-sy)>4){remember();moved=true;}if(!moved)return;n.x=Math.max(20,Math.min(3800,ox+(ev.clientX-sx)/mapZoom));n.y=Math.max(20,Math.min(3800,oy+(ev.clientY-sy)/mapZoom));box.style.left=n.x+'px';box.style.top=n.y+'px';drawEdges();};head.onpointerup=()=>{head.onpointermove=null;if(moved)renderMap();};head.onpointercancel=()=>{head.onpointermove=null;renderMap();};};}
  function pickOutput(n,done){
-  if(!n.choices.length){done(-1);return;}
+  if(!n.choices.some(c=>!window.flowChoiceIsLink(c))){done(-1);return;}
   const d=el('dialog',null,'sf-picker');d.append(el('h2','Qual resposta vai por este caminho?'));
-  n.choices.forEach((c,i)=>d.append(button(c.title||'Resposta '+(i+1),()=>{d.close();done(i);},'outline')));
+  n.choices.forEach((c,i)=>{if(!window.flowChoiceIsLink(c))d.append(button(c.title||'Resposta '+(i+1),()=>{d.close();done(i);},'outline'));});
   d.append(button('Cancelar',()=>d.close(),'subtle'));d.addEventListener('close',()=>{d.remove();renderMap();});document.body.append(d);d.showModal();
  }
  function connectBox(box,n){
@@ -72,7 +72,7 @@
    const input=button('',()=>{if(pending)connect(pending.source,pending.index,n.id);else{selectedNode=n.id;renderMap();renderInspector();}},'vm-input');input.dataset.target=n.id;input.setAttribute('aria-label','Entrada de '+title(n));input.title='Solte aqui a conexão';box.append(input);
    const description=n.type==='wait'?'◷ '+FlowTiming.waitLabel(n):n.mediaType?(n.mediaUrl?'Arquivo pronto: '+({audio:'áudio',image:'imagem',video:'vídeo',file:'documento'}[n.mediaType]):'Adicione '+({audio:'um áudio',image:'uma imagem',video:'um vídeo',file:'um documento'}[n.mediaType])):n.text||n.tag||'Clique para editar';box.append(el('p',description));if(n.type==='message'&&window.FlowTiming){const timing=button('◷ '+FlowTiming.label(n),()=>{window.flowOpenNode(n);requestAnimationFrame(()=>document.querySelector('.fe-delay select')?.focus());},'fe-node-delay');timing.setAttribute('aria-label','Editar tempo: '+FlowTiming.label(n));box.append(timing);}
    for(const l of n.links||[])box.append(el('small',l.title+' ↗','vm-link'));if(n.url)box.append(el('small',n.label+' ↗','vm-link'));
-   if(n.choices.length)n.choices.forEach((c,i)=>box.append(output(n,i,c.title||'Resposta '+(i+1))));else box.append(output(n,-1,'Próximo passo'));
+   n.choices.forEach((c,i)=>{if(window.flowChoiceIsLink(c)){const link=button((c.title||'Botão de link')+' ↗',()=>window.flowOpenNode(n,i),'vm-link');link.dataset.choiceIndex=i;box.append(link);}else box.append(output(n,i,c.title||'Resposta '+(i+1)));});if(!n.choices.some(c=>!window.flowChoiceIsLink(c)))box.append(output(n,-1,'Próximo passo'));
    box.onclick=e=>{if(e.target.closest('button,[role=button]'))return;if(pending){connect(pending.source,pending.index,n.id);return;}selectedNode=n.id;renderMap();renderInspector();window.flowOpenNode?.(n);};connectBox(box,n);nodes.append(box);
   }
   drawEdges();$('#undo-flow').disabled=!undoStack.length;$('#redo-flow').disabled=!redoStack.length;

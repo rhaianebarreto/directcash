@@ -87,10 +87,10 @@
     const del=button('×',()=>removeStep(n),'subtle');del.setAttribute('aria-label','Remover '+name(n));head.append(del);card.append(head);
     if(editing===n.id)editor(card,n);else{const text=n.type==='wait'?FlowTiming.waitLabel(n):n.mediaType?(n.mediaUrl?'Arquivo adicionado':'Toque para anexar o arquivo'):n.text||n.tag||'Toque para escrever sua mensagem';card.append(el('p',text,'sf-card-summary'));if(n.type==='message'&&window.FlowTiming)card.append(el('small','◷ '+FlowTiming.label(n),'fe-delay-preview'));}
     host.append(card);
-    if(n.choices.length){
+    if(n.choices.some(c=>!window.flowChoiceIsLink(c))){
       card.append(el('p','Cada resposta continua pelo caminho abaixo.','small muted'));
       const branches=el('div',null,'sf-branches');host.append(branches);
-      n.choices.forEach((c,i)=>{const branch=el('div',null,'sf-branch');branches.append(branch);const bar=el('div',null,'sf-branch-head');branch.append(bar);const response=inputField(bar,'Se escolher',c.title,v=>c.title=v,{max:80});window.flowTitleHint?.(response);window.flowEmojiFields?.(bar);
+      n.choices.forEach((c,i)=>{if(window.flowChoiceIsLink(c))return;const branch=el('div',null,'sf-branch');branches.append(branch);const bar=el('div',null,'sf-branch-head');branch.append(bar);const response=inputField(bar,'Se escolher',c.title,v=>c.title=v,{max:80});window.flowTitleHint?.(response);window.flowEmojiFields?.(bar);
         const remove=button('×',()=>{if(c.next){toast('Remova as etapas deste caminho antes de apagar a resposta.');return;}mutate(()=>n.choices.splice(i,1));},'subtle');remove.setAttribute('aria-label','Remover resposta '+c.title);bar.append(remove);
         branch.append(button(c.next?'+ Inserir próximo passo':'+ Próximo passo',()=>chooseNextStep(n,i),'sf-add'));
         if(c.next)renderPath(branch,c.next,nextTrail,'CAMINHO '+(i+1));else branch.append(el('p','Seu próximo passo aparece aqui.','sf-end'));
@@ -108,8 +108,8 @@
       host.append(el('div',n.type==='wait'?'◷ '+FlowTiming.waitLabel(n):n.mediaType?(icons[n.mediaType]+' '+titles[n.mediaType]):(n.text||n.tag||'Sua mensagem aparece aqui').replace(/\{\{\s*first_name\s*\}\}/g,'Ana'),'sf-bubble'));
       if(n.mediaType&&n.mediaUrl&&window.flowMediaPreview)window.flowMediaPreview(host,n.mediaType,n.mediaUrl);
       for(const p of n.parts||[])host.append(el('div',p.type==='text'?p.text:p.type==='delay'?'◷ '+p.seconds+' s':titles[p.type]||p.type,'sf-bubble'));
-      for(const l of [...(n.url?[{title:n.label,url:n.url}]:[]),...(n.links||[])]){const a=el('a',l.title+' ↗','preview-button');if(/^https:\/\//i.test(l.url)){a.href=l.url;a.target='_blank';a.rel='noopener noreferrer';}else a.title='Preencha um endereço HTTPS';host.append(a);}
-      if(n.choices.length){const selected=Math.min(chosenPaths.get(n.id)||0,n.choices.length-1);n.choices.forEach((c,i)=>host.append(button(c.title||'Resposta',()=>{chosenPaths.set(n.id,i);renderConversation(host);},'sf-preview-choice'+(n.replyStyle==='buttons'?' sf-preview-postback preview-button':'')+(i===selected?' chosen':''))));if(n.choices.some(c=>Array.from(c.title).length>20))host.append(el('small','Há resposta acima de 20 caracteres. Encurte o texto antes de publicar no Instagram.','fe-title-hint fe-warning'));host.append(el('small','Toque em uma resposta para ver esse caminho.','muted'));id=n.choices[selected].next;}else id=n.next;
+      for(const l of [...(n.url?[{title:n.label,url:n.url}]:[]),...(n.links||[]),...n.choices.filter(c=>window.flowChoiceIsLink(c))]){const a=el('a',l.title+' ↗','preview-button');if(/^https:\/\//i.test(l.url)){a.href=l.url;a.target='_blank';a.rel='noopener noreferrer';}else a.title='Preencha um endereço HTTPS';host.append(a);}
+      if(n.choices.some(c=>!window.flowChoiceIsLink(c))){let selected=chosenPaths.get(n.id)||0;if(!n.choices[selected]||window.flowChoiceIsLink(n.choices[selected]))selected=n.choices.findIndex(c=>!window.flowChoiceIsLink(c));n.choices.forEach((c,i)=>{if(!window.flowChoiceIsLink(c))host.append(button(c.title||'Resposta',()=>{chosenPaths.set(n.id,i);renderConversation(host);},'sf-preview-choice'+(n.replyStyle==='buttons'?' sf-preview-postback preview-button':'')+(i===selected?' chosen':'')));});if(n.choices.some(c=>Array.from(c.title).length>20))host.append(el('small','Há resposta acima de 20 caracteres. Encurte o texto antes de publicar no Instagram.','fe-title-hint fe-warning'));host.append(el('small','Toque em uma resposta para ver esse caminho.','muted'));id=n.choices[selected].next;}else id=n.next;
     }
   }
   window.drawFlowConversation=renderConversation;

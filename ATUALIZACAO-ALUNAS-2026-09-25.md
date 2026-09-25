@@ -1,6 +1,6 @@
 # Atualização DirectCA$H — passo a passo para alunas
 
-**Código da atualização: `editor-2026-09-25-r2`**
+**Código da atualização: `editor-2026-09-25-r3`**
 
 Inclui duplicação de blocos, emojis nos botões, espera em horas e Automatizar próximo post.
 
@@ -8,22 +8,22 @@ Inclui duplicação de blocos, emojis nos botões, espera em horas e Automatizar
 
 1. Abra seu repositório do DirectCA$H no GitHub.
 2. Abra o arquivo `.github/workflows/atualizar-directcash.yml` e clique no lápis para editar.
-3. Copie todo o [código de atualização oficial](https://github.com/rhaianebarreto/directcash/blob/editor-2026-09-25-r2/.github/workflows/atualizar-directcash.yml), substitua o conteúdo do seu arquivo e confirme em **Commit changes**.
+3. Copie todo o [código de atualização oficial](https://github.com/rhaianebarreto/directcash/blob/editor-2026-09-25-r3/.github/workflows/atualizar-directcash.yml), substitua o conteúdo do seu arquivo e confirme em **Commit changes**.
 
 Se esse arquivo não existir: **Add file → Create new file**, escreva o nome completo `.github/workflows/atualizar-directcash.yml`, cole o mesmo conteúdo e confirme.
 
-Se em Actions já aparece o campo **Código da atualização recebido no Club**, pule essa preparação.
+Se você já instalou a revisão `editor-2026-09-25-r2` com o código de atualização daquela revisão, pode pular essa preparação. Nas versões anteriores, substitua o arquivo conforme acima para aceitar o código com `-r3`.
 
 ## 2. Aplicar a atualização
 
 1. No seu repositório, abra **Actions → Atualizar DirectCA$H → Run workflow**.
 2. Escolha a branch conectada à Cloudflare (geralmente **main**).
-3. No campo do código, coloque **editor-2026-09-25-r2** e confirme **Run workflow**.
+3. No campo do código, coloque **editor-2026-09-25-r3** e confirme **Run workflow**.
 4. Aguarde a execução ficar verde.
 5. Na sua Cloudflare, abra **Workers e Pages → seu painel → Builds** e aguarde o build desse novo commit terminar com sucesso.
 6. Abra o mesmo endereço do seu painel e recarregue.
 
-Para conferir a versão, acrescente `/version.json` ao endereço do painel. Deve aparecer `editor-2026-09-25-r2`.
+Para conferir a versão, acrescente `/version.json` ao endereço do painel. Deve aparecer `editor-2026-09-25-r3`.
 
 Se o build não começar: confira em **Configurações → Builds** se o repositório e a branch são os mesmos usados acima. O comando de implantação desta versão é `npm run deploy`. Uma execução verde no GitHub, sozinha, não confirma a publicação na Cloudflare.
 
@@ -35,3 +35,12 @@ Se o build não começar: confira em **Configurações → Builds** se o reposit
 - **Emojis:** clique em 😊 Emojis junto ao texto do botão.
 - **Horas:** no bloco Espera, selecione a unidade Horas (até 23 horas).
 - **Próximo post:** marque Automatizar próximo post e salve com a automação ativa antes de publicar. Ela aguardará o primeiro post ou Reel publicado após salvar, no perfil selecionado.
+
+## Novidade desta revisão: ação dos botões
+
+1. Abra Fluxos e edite o bloco de mensagem.
+2. Em Botões desta mensagem, preencha o texto e escolha Ao clicar.
+3. Escolha Ir para o próximo passo e selecione o bloco de destino, ou Abrir um link e cole o endereço HTTPS.
+4. Salve o fluxo.
+
+Você pode combinar as duas ações em uma mensagem de até três botões. Botões de link abrem o endereço; não acionam outro passo do fluxo. Se um botão já tiver uma conexão, remova essa conexão no mapa antes de trocar para link; a caixa de destino é preservada.

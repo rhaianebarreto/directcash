@@ -20,16 +20,41 @@
   const details=el('details',null,'fp-link-alternative');details.append(el('summary','Ou usar um link'));const l=el('label','Endereço HTTPS do arquivo'),i=el('input');i.type='url';i.value=n.mediaUrl;i.placeholder='https://…';i.maxLength=500;i.onchange=()=>{if(i.value&&!safeMedia(i.value)){toast('Use um endereço HTTPS para o arquivo.');return;}remember();n.mediaUrl=i.value;delete n.mediaDuration;rerender();};l.append(i);details.append(l);host.append(details);
  };
  function field(host,label,obj,key,rerender,max=80){const l=el('label',label),i=el('input');i.value=obj[key]||'';i.maxLength=max;i.type=key==='url'?'url':'text';if(key==='url')i.placeholder='https://…';let changed=false;i.oninput=()=>{if(!changed){remember();changed=true;}obj[key]=i.value;window.drawFlowConversation($('#fp-map-conversation'));window.drawFlowConversation($('#sf-conversation'));};i.onchange=()=>{changed=false;renderMap();};l.append(i);host.append(l);if(key==='title'||key==='label')window.flowTitleHint?.(i);}
+ window.flowChoiceIsLink=c=>c.action==='link'||!!c.url;
  window.flowButtonEditor=(host,n,rerender)=>{
+  // Bring existing link buttons into the same ordered list without changing their action.
+  const legacy=[...(n.url?[{title:n.label,url:n.url}]:[]),...(n.links||[])];
+  if(legacy.length){n.choices.push(...legacy.map(c=>({...c,action:'link',next:''})));n.url='';n.links=[];n.replyStyle='buttons';}
   const group=el('div',null,'fp-buttons');host.append(group);group.append(el('h3','Botões desta mensagem'));
-  const links=n.links||[];
   const refresh=()=>{renderMap();rerender();};
-  if(!n.choices.length&&!n.url&&!links.length){group.append(el('p','Escolha o que o botão faz.','small muted'),button('↗ Abrir um link',()=>{remember();n.links=[{title:'',url:''}];refresh();},'outline'),button('⑂ Continuar por uma resposta',()=>{remember();n.choices.push({title:'',next:n.next});n.next='';refresh();},'outline'));return;}
-  if(n.choices.length){const styleLabel=el('label','Estilo das respostas'),style=el('select');style.add(new Option('Respostas rápidas','quick'));style.add(new Option('Botões na mensagem (como os de link)','buttons'));style.value=n.replyStyle||'quick';style.onchange=()=>{if(style.value==='buttons'&&n.choices.length>3){style.value=n.replyStyle||'quick';toast('Use até 3 respostas para escolher botões na mensagem. Nenhuma resposta foi removida.');return;}remember();n.replyStyle=style.value;refresh();};styleLabel.append(style);group.append(styleLabel);const limit=n.replyStyle==='buttons'?3:13;group.append(el('p',n.replyStyle==='buttons'?'Até 3 botões presos à mensagem. Cada um continua pelo caminho ligado no mapa.':'⑂ Até 13 respostas rápidas, cada uma com seu caminho.','small muted'));n.choices.forEach((c,i)=>{const row=el('div',null,'fp-button-row');group.append(row);field(row,'Texto da resposta '+(i+1),c,'title',refresh);row.append(button('Remover resposta',()=>{if(c.next){toast('Exclua a conexão desta resposta antes de remover o botão.');return;}remember();n.choices.splice(i,1);refresh();},'subtle'));});if(n.choices.length<limit)group.append(button('+ Resposta',()=>{remember();n.choices.push({title:'',next:''});refresh();},'outline'));group.append(el('small','Para enviar links, adicione uma mensagem de link no próximo passo.','muted'));return;}
-  group.append(el('p','↗ Links: cada botão abre o endereço escolhido.','small muted'));
-  if(n.url){field(group,'Texto do botão',n,'label',refresh);field(group,'Endereço do botão',n,'url',refresh,500);group.append(button('Remover botão de link',()=>{remember();n.url='';refresh();},'subtle'));}
-  links.forEach((link,i)=>{const row=el('div',null,'fp-button-row');group.append(row);field(row,'Texto do botão '+(i+1),link,'title',refresh);field(row,'Endereço do botão',link,'url',refresh,500);row.append(button('Remover botão',()=>{remember();n.links.splice(i,1);refresh();},'subtle'));});
-  if(links.length+(n.url?1:0)<3)group.append(button('+ Botão de link',()=>{remember();if(n.url){n.links=[{title:n.label,url:n.url},...links];n.url='';}n.links??=[];n.links.push({title:'',url:''});refresh();},'outline'));
+  const hasLinks=n.choices.some(window.flowChoiceIsLink),limit=hasLinks||n.replyStyle==='buttons'?3:13;
+  const styleLabel=el('label','Estilo dos botões'),style=el('select');style.add(new Option('Respostas rápidas','quick'));style.add(new Option('Botões na mensagem','buttons'));style.value=hasLinks?'buttons':n.replyStyle||'quick';style.disabled=hasLinks;
+  style.onchange=()=>{if(style.value==='buttons'&&n.choices.length>3){style.value=n.replyStyle||'quick';toast('Use até 3 botões para esse formato.');return;}remember();n.replyStyle=style.value;refresh();};styleLabel.append(style);group.append(styleLabel);
+  group.append(el('p',hasLinks?'Até 3 botões: cada um pode abrir um link ou continuar o fluxo.':'Escolha a ação de cada botão. Botões de link usam o formato de até 3 botões.','small muted'));
+  n.choices.forEach((c,i)=>{
+   const row=el('div',null,'fp-button-row');group.append(row);field(row,'Texto do botão '+(i+1),c,'title',refresh);
+   const label=el('label','Ao clicar'),action=el('select');action.dataset.buttonAction=String(i);action.add(new Option('Ir para o próximo passo','next'));action.add(new Option('Abrir um link','link'));action.value=window.flowChoiceIsLink(c)?'link':'next';label.append(action);row.append(label);
+   action.onchange=()=>{
+    if(action.value==='link'&&n.choices.length>3){action.value='next';toast('Para usar links, mantenha até 3 botões nesta mensagem. Nenhum botão foi removido.');return;}
+    if(action.value==='link'&&c.next){action.value='next';toast('Remova a conexão deste botão no mapa antes de trocar para link. O bloco conectado foi preservado.');return;}
+    remember();c.action=action.value;
+    if(c.action==='link'){c.url='';c.next='';n.replyStyle='buttons';}
+    else{delete c.url;c.next=n.next||'';n.next='';}
+    refresh();
+   };
+   if(window.flowChoiceIsLink(c))field(row,'Endereço do link (https://)',c,'url',refresh,500);
+   else{
+    const targetLabel=el('label','Próximo passo'),target=el('select');target.dataset.buttonTarget=String(i);target.add(new Option('Selecionar próximo passo',''));
+    for(const node of mapState.map.nodes)if(node.id!==n.id)target.add(new Option('Bloco '+node.number+' — '+(node.text||nodeNames[node.type]).slice(0,50),node.id));
+    target.value=c.next||'';target.onchange=()=>{
+     const seen=new Set(),reaches=id=>{if(id===n.id)return true;if(!id||seen.has(id))return false;seen.add(id);const node=mapState.map.nodes.find(x=>x.id===id);return !!node&&[node.next,...node.choices.filter(x=>!window.flowChoiceIsLink(x)).map(x=>x.next)].some(reaches);};
+     if(reaches(target.value)){target.value=c.next||'';toast('Escolha um passo que não volte a este bloco.');return;}remember();c.next=target.value;refresh();
+    };targetLabel.append(target);row.append(targetLabel);
+   }
+   row.append(button('Remover botão',()=>{if(c.next){toast('Remova a conexão deste botão antes de excluí-lo.');return;}remember();n.choices.splice(i,1);refresh();},'subtle'));
+  });
+  if(n.choices.length<limit)group.append(button('+ Botão',()=>{remember();n.choices.push({title:'',next:n.next||''});n.next='';refresh();},'outline'));
+  window.flowEmojiFields?.(group);
  };
  // Keep all configuration controls, but group them by the order of a new flow.
  const setup=$('.sf-setup'),basics=el('div',null,'fp-basics'),channels=el('div',null,'fp-channels');
