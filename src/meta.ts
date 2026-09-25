@@ -1,4 +1,5 @@
 import {schedulePending} from './scheduler-client';
+import {firstPostAfter} from './next-post';
 import {readFlow,keywordMatches,hasChannel} from './flow';
 import {queueInput,processInputs} from './conversations';
 import { boundedText, digest, matches, seal, unseal, type Rule } from './core';
@@ -22,9 +23,26 @@ async function recordInteraction(env:AppEnv,kind:string,id:string,userId:string,
  const detail=JSON.stringify({eventId:id,userId,username:username.slice(0,100),text:text.slice(0,2000)});
  await env.DB.prepare('INSERT INTO events(kind,detail,created) SELECT ?,?,? WHERE NOT EXISTS(SELECT 1 FROM events WHERE kind=? AND detail=?)').bind(kind,detail,created,kind,detail).run();
 }
+export async function bindNextPosts(env:AppEnv,a:Account){
+ const pending=(await env.DB.prepare("SELECT id,flow FROM rules WHERE active=1 AND json_extract(flow,'$.nextPostAt') IS NOT NULL").all<{id:string;flow:string}>()).results;
+ if(!pending.length)return;
+ // Share pages between pending rules, without retaining credentials or profile data globally.
+ const pages=new Map<string,Promise<any>>();
+ const page=(after='')=>{if(!pages.has(after))pages.set(after,graph(env,a,`${a.id}/media?fields=id,timestamp&limit=100${after?'&after='+encodeURIComponent(after):''}`));return pages.get(after)!;};
+ try{
+  for(const rule of pending){
+   const flow=readFlow(rule);if(!flow?.nextPostAt)continue;
+   const id=await firstPostAfter(flow.nextPostAt,page);if(!id)continue;
+   delete flow.nextPostAt;flow.allPosts=false;
+   // A concurrent save, pause or webhook must never overwrite a newer selection.
+   await env.DB.prepare('UPDATE rules SET media_id=?,flow=? WHERE id=? AND flow=? AND active=1').bind(id,JSON.stringify(flow),rule.id,rule.flow).run();
+  }
+ }catch(error){console.error('next-post binding failed',error instanceof Error?error.message:'unknown error');}
+}
 export async function ingest(env:AppEnv, payload:{object?:string;entry?:Entry[]}) {
   if(payload.object!=='instagram')return;
   const a=await account(env);if(!a||!await licenseFor(env,a.id))return;
+  await bindNextPosts(env,a);
   const rules=(await env.DB.prepare('SELECT * FROM rules WHERE active=1 ORDER BY created ASC').all<Rule>()).results;
   for(const entry of (payload.entry||[]).slice(0,100)){
     if(entry.id!==a.id)continue;
@@ -96,6 +114,7 @@ async function drainPending(env:AppEnv){
 export async function maintenance(env:AppEnv){
   await drain(env);
   const a=await account(env);
+  if(a)await bindNextPosts(env,a);
   if(a&&a.expires>now()&&a.refreshed<now()-86400&&a.expires<now()+20*86400){
     try{const p=new URLSearchParams({grant_type:'ig_refresh_token',access_token:await unseal(a.token,env.APP_KEY)});const token=await meta('https://graph.instagram.com/refresh_access_token?'+p);if(!token.access_token||!token.expires_in)throw Error('token');await env.DB.prepare('UPDATE account SET token=?,expires=?,refreshed=? WHERE id=?').bind(await seal(token.access_token,env.APP_KEY),now()+Number(token.expires_in),now(),a.id).run();await log(env,'connection','Acesso ao Instagram renovado.');}catch{await log(env,'connection','Renovação falhou. Reconecte o Instagram.');}
   }

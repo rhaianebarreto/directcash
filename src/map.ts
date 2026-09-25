@@ -8,7 +8,7 @@ export function validateMap(input:any):MapFlow{
  const nodes:Node[]=input.nodes.map((b:any)=>{
   const number=Number.isSafeInteger(b?.number)&&b.number>0&&b.number<1000000&&!used.has(b.number)?b.number:++nextNumber;used.add(number);
   try{
-  const s=(k:string,max=600)=>{const v=b[k]??'';if(typeof v!=='string'||v.length>max)throw Error('Campo inválido no bloco: '+k);return v.trim();};
+  const s=(k:string,max=600)=>{const v=b[k]??'';if(typeof v!=='string'||(k==='label'?Array.from(v).length:v.length)>max)throw Error('Campo inválido no bloco: '+k);return v.trim();};
   const id=s('id',40),type=s('type',20),text=s('text'),next=s('next',40),url=s('url',500),mediaUrl=s('mediaUrl',500),mediaType=s('mediaType',10);
   if(!/^[a-zA-Z0-9_-]+$/.test(id)||!['message','carousel','wait','email','follow','tag'].includes(type))throw Error('Bloco inválido.');
   if(['message','email','follow'].includes(type)&&!text&&!(type==='message'&&mediaType))throw Error('Preencha a mensagem de cada bloco.');
@@ -18,7 +18,7 @@ export function validateMap(input:any):MapFlow{
   const choices=(b.choices??[]);if(!Array.isArray(choices)||choices.length>13)throw Error('Use até 13 opções por mensagem.');
   if(replyStyle==='buttons'&&choices.length>3)throw Error('Botões na mensagem permitem até 3 respostas. Use respostas rápidas para mais opções.');
   const parsed=choices.map((c:any)=>{if(typeof c.title!=='string'||!c.title.trim()||Array.from(c.title).length>20||typeof c.next!=='string'||c.next.length>40)throw Error('Preencha o texto e o destino das opções.');return {title:c.title.trim(),next:c.next};});
-  const links=b.links??[];if(!Array.isArray(links)||links.length>3||links.some((l:any)=>typeof l.title!=='string'||!l.title.trim()||l.title.length>20||!valid(l.url)))throw Error('Use até 3 botões com título e link HTTPS.');if(links.length&&(type!=='message'||url||mediaType||parsed.length||b.parts?.length))throw Error('Use botões de link em uma mensagem de texto separada.');
+  const links=b.links??[];if(!Array.isArray(links)||links.length>3||links.some((l:any)=>typeof l.title!=='string'||!l.title.trim()||Array.from(l.title).length>20||!valid(l.url)))throw Error('Use até 3 botões com título e link HTTPS.');if(links.length&&(type!=='message'||url||mediaType||parsed.length||b.parts?.length))throw Error('Use botões de link em uma mensagem de texto separada.');
   if(parsed.length&&next)throw Error('Use os destinos das opções, sem uma segunda saída no mesmo bloco.');
   if(parsed.length&&(type!=='message'||url||mediaType))throw Error('Use opções de resposta em uma mensagem de texto sem link ou mídia.');
   const minutes=Number(b.minutes??60),seconds=b.seconds===undefined?undefined:Number(b.seconds);if(type==='wait'&&(seconds!==undefined?(!Number.isInteger(seconds)||seconds<1||seconds>82800):(!Number.isInteger(minutes)||minutes<1||minutes>1380)))throw Error('Use de 1 a 82.800 segundos ou de 1 a 1.380 minutos.');
@@ -27,7 +27,7 @@ export function validateMap(input:any):MapFlow{
   let cards:Node['cards'];if(type==='carousel'){
    if(!Array.isArray(b.cards)||b.cards.length<1||b.cards.length>10)throw Error('O catálogo precisa de 1 a 10 itens.');
    cards=b.cards.map((c:any)=>{if(typeof c.title!=='string'||!c.title.trim()||c.title.length>80||typeof c.subtitle!=='string'||c.subtitle.length>80||!valid(c.image)||!Array.isArray(c.buttons)||c.buttons.length>3)throw Error('Confira título, descrição, imagem HTTPS e até 3 botões de cada item.');
-    const buttons=c.buttons.map((v:any)=>{if(typeof v.title!=='string'||!v.title.trim()||v.title.length>20||!valid(v.url))throw Error('Confira os botões do catálogo.');return {title:v.title.trim(),url:v.url};});return {title:c.title.trim(),subtitle:c.subtitle,image:c.image,buttons};});
+    const buttons=c.buttons.map((v:any)=>{if(typeof v.title!=='string'||!v.title.trim()||Array.from(v.title).length>20||!valid(v.url))throw Error('Confira os botões do catálogo.');return {title:v.title.trim(),url:v.url};});return {title:c.title.trim(),subtitle:c.subtitle,image:c.image,buttons};});
   }
   let parts:Part[]=[];if(b.parts){if(!Array.isArray(b.parts)||(b.parts.length&&type!=='message')||b.parts.length>12)throw Error('Use até 12 conteúdos adicionais por mensagem.');parts=b.parts.map((p:any)=>{if(!['text','image','audio','video','delay'].includes(p.type))throw Error('Conteúdo inválido.');const text=typeof p.text==='string'?p.text.trim():'',url=typeof p.url==='string'?p.url:'';const seconds=Number(p.seconds||3);if(p.type==='text'&&(!text||text.length>600)||['image','audio','video'].includes(p.type)&&!valid(url)||p.type==='delay'&&(!Number.isInteger(seconds)||seconds<1||seconds>10))throw Error('Confira os conteúdos; pausas curtas devem ter entre 1 e 10 segundos.');return {type:p.type,text,url,seconds};});}
   let sendDelay:Node['sendDelay'];let mediaDuration:number|undefined;

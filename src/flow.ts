@@ -1,10 +1,10 @@
 import {validateMap,type MapFlow} from './map';
-export type Flow={version:1;map?:MapFlow;match:'contains'|'exact'|'any';channels?:string[];storyId?:string;allPosts:boolean;welcomeEnabled:boolean;welcomeText:string;welcomeButton:string;requireFollow:boolean;followText:string;collectEmail:boolean;emailText:string;linkEnabled:boolean;linkLabel:string;attachmentType:''|'image'|'audio'|'video'|'file';attachmentUrl:string;followupEnabled:boolean;followupMinutes:number;followupText:string;followupLink:string;followupLabel:string};
+export type Flow={version:1;nextPostAt?:number;map?:MapFlow;match:'contains'|'exact'|'any';channels?:string[];storyId?:string;allPosts:boolean;welcomeEnabled:boolean;welcomeText:string;welcomeButton:string;requireFollow:boolean;followText:string;collectEmail:boolean;emailText:string;linkEnabled:boolean;linkLabel:string;attachmentType:''|'image'|'audio'|'video'|'file';attachmentUrl:string;followupEnabled:boolean;followupMinutes:number;followupText:string;followupLink:string;followupLabel:string};
 const https=(value:string)=>{try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password;}catch{return false;}};
 export function validateFlow(input:unknown):Flow{
  let b:any=input;if(typeof b==='string'){try{b=JSON.parse(b);}catch{throw Error('Configuração da conversa inválida.');}}
  if(!b||typeof b!=='object'||Array.isArray(b)||b.version!==1)throw Error('Configuração da conversa inválida.');
- const str=(k:string,fallback:string,max:number)=>{const v=b[k]??fallback;if(typeof v!=='string'||v.length>max)throw Error('Campo inválido: '+k);return v.trim();};
+ const str=(k:string,fallback:string,max:number)=>{const v=b[k]??fallback;if(typeof v!=='string'||(['welcomeButton','linkLabel','followupLabel'].includes(k)?Array.from(v).length:v.length)>max)throw Error('Campo inválido: '+k);return v.trim();};
  const bool=(k:string,fallback=false)=>{const v=b[k]??fallback;if(typeof v!=='boolean')throw Error('Opção inválida: '+k);return v;};
  const match=str('match','contains',10);if(!['contains','exact','any'].includes(match))throw Error('Correspondência inválida.');
  const attachmentType=str('attachmentType','',10);if(!['','image','audio','video','file'].includes(attachmentType))throw Error('Tipo de mídia inválido.');
@@ -16,6 +16,7 @@ export function validateFlow(input:unknown):Flow{
  if(f.followupEnabled&&(!Number.isInteger(f.followupMinutes)||f.followupMinutes<1||f.followupMinutes>1380||!f.followupText||(f.followupLink&&!https(f.followupLink))||(f.followupLink&&!f.followupLabel)))throw Error('Acompanhamento: use de 1 a 1380 minutos, mensagem e link HTTPS válido, se houver.');
  if(b.channels!==undefined){if(!Array.isArray(b.channels)||!b.channels.length||b.channels.length>3||b.channels.some((c:unknown)=>!['comment','story','dm'].includes(String(c))))throw Error('Selecione pelo menos um canal válido.');f.channels=[...new Set<string>(b.channels)];}
  f.storyId=str('storyId','',100);if(f.storyId&&!/^\d+$/.test(f.storyId))throw Error('Escolha um story válido.');
+ if(b.nextPostAt!==undefined){if(!Number.isSafeInteger(b.nextPostAt)||b.nextPostAt<1)throw Error('Data do próximo post inválida.');f.nextPostAt=b.nextPostAt;f.allPosts=false;}
  if(b.map)f.map=validateMap(b.map);
  return f;
 }

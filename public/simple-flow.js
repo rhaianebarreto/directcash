@@ -62,10 +62,13 @@
       if(window.flowAttachmentEditor)window.flowAttachmentEditor(form,n,()=>renderMap());
       else inputField(form,'Link público do arquivo',n.mediaUrl,v=>n.mediaUrl=v,{type:'url',max:500,placeholder:'https://…'});
     }else if(n.type==='wait'){
+      if(window.renderWaitUnits)window.renderWaitUnits(form,n,renderGuided);
+      else{
       const row=el('div',null,'sf-wait');form.append(row);
       inputField(row,'Tempo',n.seconds??n.minutes,v=>{if(n.seconds===undefined)n.minutes=v;else n.seconds=v;},{type:'number',limit:n.seconds===undefined?1380:82800});
       const l=el('label','Unidade'),s=el('select');s.add(new Option('Segundos','seconds'));s.add(new Option('Minutos','minutes'));s.value=n.seconds===undefined?'minutes':'seconds';s.onchange=()=>mutate(()=>{const value=n.seconds??n.minutes;if(s.value==='seconds')n.seconds=value;else{delete n.seconds;n.minutes=value;}});l.append(s);row.append(l);
       form.append(el('p','A conversa retoma após a espera. O tempo pode variar um pouco conforme a rede.','small muted'));
+      }
     }else form.append(button('Configurar esta etapa',()=>{selectedNode=n.id;renderInspector();blockDialog.showModal();},'outline'));
     if(n.parts?.length||n.links?.length)form.append(button('Editar conteúdos existentes',()=>{selectedNode=n.id;renderInspector();blockDialog.showModal();},'outline'));
     if(n.type==='message'&&window.flowDelayEditor)window.flowDelayEditor(form,n);
@@ -80,6 +83,7 @@
     const card=el('article',null,'sf-card');card.dataset.node=n.id;
     const head=el('div',null,'sf-card-head'),heading=el('div');heading.append(el('small',label,'eyebrow'),el('h3',(icons[kind(n)]||'◇')+' '+name(n)));
     head.append(heading,button(editing===n.id?'Fechar':'Editar',()=>{editing=editing===n.id?'':n.id;renderGuided();focusCard(n.id);},'outline'));
+    head.append(button('Duplicar',()=>window.duplicateFlowBlock(n),'outline'));
     const del=button('×',()=>removeStep(n),'subtle');del.setAttribute('aria-label','Remover '+name(n));head.append(del);card.append(head);
     if(editing===n.id)editor(card,n);else{const text=n.type==='wait'?(n.seconds??n.minutes)+' '+(n.seconds===undefined?'minutos':'segundos'):n.mediaType?(n.mediaUrl?'Arquivo adicionado':'Toque para anexar o arquivo'):n.text||n.tag||'Toque para escrever sua mensagem';card.append(el('p',text,'sf-card-summary'));if(n.type==='message'&&window.FlowTiming)card.append(el('small','◷ '+FlowTiming.label(n),'fe-delay-preview'));}
     host.append(card);
@@ -116,6 +120,9 @@
     const first=mapState.map.nodes.find(n=>n.id===mapState.map.start);
     if((mapState.channels||[mapState.trigger]).includes('comment')&&first?.next&&!first.choices.length)lane.append(el('p','Para continuar após a primeira mensagem de um comentário, a pessoa precisa responder. Ela pode escrever uma resposta ou tocar em uma opção de resposta. Botões de link apenas abrem o endereço.','notice'));
     if(mapState.map.start)renderPath(lane,mapState.map.start,new Set(),'PRIMEIRA ETAPA');else lane.append(button('+ Primeira etapa',()=>chooseNextStep(null),'gold'));
+    const connected=new Set();const visit=id=>{if(!id||connected.has(id))return;connected.add(id);const n=mapState.map.nodes.find(n=>n.id===id);if(n){visit(n.next);n.choices.forEach(c=>visit(c.next));}};visit(mapState.map.start);
+    const loose=mapState.map.nodes.filter(n=>!connected.has(n.id));
+    if(loose.length){lane.append(el('h3','Blocos sem conexão'),el('p','Conecte estes blocos ao caminho desejado em “Ver mapa”.','muted'));for(const n of loose){if(connected.has(n.id))continue;renderPath(lane,n.id,new Set(),'CÓPIA / BLOCO LIVRE');visit(n.id);}}
     const footer=el('div',null,'sf-save');footer.append(el('span','Tudo pronto? Salve sua conversa.'),button('Salvar fluxo',()=>$('#save-flow').click(),'gold'));lane.append(footer);
     const preview=el('aside',null,'sf-preview');preview.append(el('h3','Prévia da conversa'),el('p','Exemplo de como a pessoa percorre o fluxo.','small muted'));const conv=el('div');conv.id='sf-conversation';preview.append(conv);guidedHost.append(lane,preview);renderConversation();
   };
@@ -128,4 +135,3 @@
 
   if(mapState)renderGuided();
 })();
-

@@ -150,7 +150,7 @@ async function handle(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Respo
     return json({ok:true,queued:true,message:'Disparo colocado na fila. Acompanhe em Atividade.'});
   }
   if(path==='/api/rules'&&req.method==='POST'){
-    let r;const b=await body(req);try{r=validateRule(b);}catch(e){return json({error:(e as Error).message,...(e instanceof BlockError?{nodeId:e.nodeId,blockNumber:e.blockNumber}:{})},400);}
+    let r;const b=await body(req);try{if(b.flow&&typeof b.flow==='object'&&(b.flow as any).nextPostAt){const previous=typeof b.id==='string'?await env.DB.prepare('SELECT flow FROM rules WHERE id=?').bind(b.id).first<{flow:string}>():null;(b.flow as any).nextPostAt=previous&&readFlow(previous)?.nextPostAt||now();b.media_id='';}r=validateRule(b);}catch(e){return json({error:(e as Error).message,...(e instanceof BlockError?{nodeId:e.nodeId,blockNumber:e.blockNumber}:{})},400);}
     const a=await account(env);
     if(r.active&&!a)return json({error:'Nenhum Instagram conectado neste perfil. Abra Configuração e conecte sua conta.'},400);
     if(r.active&&a&&!await licenseFor(env,a.id))return json({error:'O Instagram está conectado, mas o acesso não está liberado. Ative a licença ou confira TEST_ACCESS_UNTIL nas variáveis do Worker após a última implantação.'},400);
