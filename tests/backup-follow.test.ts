@@ -8,6 +8,9 @@ import {exportRules,decodeBackup,restoreRules} from '../src/backups';
 import {ingest,drain,now,type AppEnv} from '../src/meta';
 import {queueInput} from '../src/conversations';
 import {deleteRules} from '../src/bulk-rules';
+import worker from '../src/index';
+import {digest} from '../src/core';
+import {nextWake} from '../src/scheduler-client';
 
 const rule=()=>validateRule({name:'Entrega',trigger:'comment',keywords:'QuErO',media_id:'',message:'Conteúdo',link:'',public_reply:'',active:true,flow:{version:1,allPosts:true,linkEnabled:false,map:{start:'gate',nodes:[{id:'gate',type:'follow',text:'Siga para receber',followButton:'Já segui ✅',next:'content'},{id:'content',type:'message',text:'CONTEUDO LIBERADO'}]}}});
 test('keywords ignore letter case for exact, contains and legacy rules',()=>{
@@ -34,6 +37,33 @@ test('bulk deletion validates selection, preserves other rules and cancels only 
   assert.equal((await env.DB.prepare("SELECT stage FROM conversations WHERE id='c'").first<any>()).stage,'done');
   assert.equal((await env.DB.prepare("SELECT status FROM flow_inputs WHERE id='i'").first<any>()).status,'failed');
  }finally{await mf.dispose();}
+});
+test('more than 30 rules can be restored, created through API, exported and bulk deleted',async()=>{
+ const {mf,env}=await setup();try{
+  const rows=Array.from({length:125},(_,i)=>({...rule(),name:'Fluxo '+i,id:String(i),created:now()}));
+  assert.equal((await restoreRules(env,exportRules(rows))).imported,125);
+  env.ADMIN_PASSWORD='test-password';await env.DB.prepare('INSERT INTO sessions(id,expires) VALUES(?,?)').bind(await digest('test-session'),now()+86400).run();
+  const created=await worker.fetch(new Request('https://test/api/rules',{method:'POST',headers:{Origin:'https://test',Cookie:'dc_session=test-session','Content-Type':'application/json'},body:JSON.stringify({...rule(),active:false})}),env,{} as ExecutionContext);
+  assert.equal(created.status,200,await created.clone().text());
+  const all=(await env.DB.prepare('SELECT * FROM rules').all<Rule>()).results;assert.equal(all.length,126);assert.equal(exportRules(all).rules.length,126);
+  const kept=all[0].id;assert.equal((await deleteRules(env,all.slice(1).map(r=>r.id))).deleted,125);
+  assert.equal((await env.DB.prepare('SELECT id FROM rules').first<any>()).id,kept);
+ }finally{await mf.dispose();}
+});
+test('comments continue after 60 sends; Meta throttling pauses and resumes without duplicating',async()=>{
+ const {mf,env}=await setup(),old=globalThis.fetch;try{
+  await env.DB.prepare('INSERT INTO account VALUES(?,?,?,?,?)').bind('12345','test',await seal('fake',env.APP_KEY),now()+86400,now()).run();
+  const r=validateRule({name:'Teste',trigger:'comment',keywords:'quero',media_id:'',message:'Entrega',link:'',public_reply:'',active:true,flow:{version:1,allPosts:true,linkEnabled:false,map:{start:'a',nodes:[{id:'a',type:'message',text:'Aqui está'}]}}});
+  await env.DB.prepare('INSERT INTO rules(id,name,trigger,media_id,keywords,message,link,public_reply,active,created,flow) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind('r',r.name,r.trigger,r.media_id,r.keywords,r.message,r.link,r.public_reply,r.active,now(),r.flow!).run();
+  await env.DB.prepare("INSERT INTO jobs(id,account_id,rule_id,recipient,kind,text,status,created,expires,updated) SELECT 'old'||value,'12345','r','222','dm','ok','sent',?,?,? FROM json_each(?)").bind(now(),now()+86400,now(),JSON.stringify(Array.from({length:61},(_,i)=>i))).run();
+  let attempts=0,mode='limited';globalThis.fetch=async(_input,init)=>{if(!init?.body)return Response.json({name:'Teste'});attempts++;if(mode==='limited')return Response.json({error:{code:4,message:'Rate limit'}},{status:429});if(mode==='unknown')throw Error('timeout');return Response.json({message_id:'sent'+attempts});};
+  const comment=(id:string)=>({object:'instagram',entry:[{id:'12345',time:now(),changes:[{field:'comments',value:{id,from:{id:'222'},text:'QUERO',media:{id:'post'}}}]}]});
+  await ingest(env,comment('c1'));await drain(env);assert.equal(attempts,1);assert.equal((await env.DB.prepare("SELECT count(*) n FROM jobs WHERE status='pending'").first<any>()).n,1);assert.ok((await nextWake(env))!>now());
+  await drain(env);assert.equal(attempts,1);
+  await env.DB.prepare("UPDATE settings SET value='0' WHERE key='send_retry_after'").run();await env.DB.prepare("UPDATE jobs SET not_before=0 WHERE status='pending'").run();mode='ok';await drain(env);assert.equal(attempts,2);
+  await ingest(env,comment('c1'));await drain(env);assert.equal(attempts,2);
+  mode='unknown';await ingest(env,comment('c2'));await drain(env);assert.equal(attempts,3);await drain(env);assert.equal(attempts,3);assert.equal((await env.DB.prepare("SELECT count(*) n FROM jobs WHERE status='uncertain'").first<any>()).n,1);
+ }finally{globalThis.fetch=old;await mf.dispose();}
 });
 test('backup round-trips maps and simple automations as paused copies and rejects invalid batches',async()=>{
  const {mf,env}=await setup();try{

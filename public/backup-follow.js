@@ -11,7 +11,7 @@
  file.onchange=()=>run(async()=>{
   try{
    const selected=file.files[0];if(!selected)return;if(selected.size>4*1024*1024)throw Error('Use um backup de até 4 MB.');
-   const data=JSON.parse(await selected.text());if(data?.format!=='directcash-backup'||data.version!==1||!Array.isArray(data.rules)||!data.rules.length||data.rules.length>30)throw Error('Escolha um backup DirectCA$H válido.');
+   const data=JSON.parse(await selected.text());if(data?.format!=='directcash-backup'||data.version!==1||!Array.isArray(data.rules)||!data.rules.length)throw Error('Escolha um backup DirectCA$H válido.');
    const profile=state.account?.id||'',dialog=el('dialog',null,'flow-import-dialog');
    dialog.append(el('h2','Importar '+data.rules.length+' fluxos e automações'),el('p','Serão adicionadas cópias pausadas ao perfil atual. As automações existentes serão mantidas.'),el('p','O backup contém configurações e links dos anexos, não os arquivos de mídia. Ao mudar de instalação ou perfil, revise publicações e anexos antes de ativar.','small muted'));
    for(const r of data.rules)dialog.append(el('p',String(r?.name||'Sem nome')));

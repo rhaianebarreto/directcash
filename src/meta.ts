@@ -90,9 +90,9 @@ async function drainPending(env:AppEnv){
   await env.DB.prepare("UPDATE jobs SET status='uncertain',detail='Envio interrompido. Confira o Instagram antes de reenviar.',updated=? WHERE status='sending' AND updated<?").bind(now(),now()-180).run();
   await env.DB.prepare("UPDATE jobs SET status='expired',detail='Prazo de resposta encerrado.',updated=? WHERE status='pending' AND expires<=?").bind(now(),now()).run();
   await env.DB.prepare("UPDATE jobs SET status='cancelled',detail='Automação pausada, excluída ou conta desconectada.',updated=? WHERE status='pending' AND (account_id<>? OR rule_id NOT IN (SELECT id FROM rules WHERE active=1))").bind(now(),a.id).run();
-  const count=await env.DB.prepare("SELECT count(*) n FROM jobs WHERE updated>? AND status IN ('sent','sending','uncertain')").bind(now()-3600).first<{n:number}>();
-  if((count?.n||0)>=60)return; // Conservative local cap, not a claim about Meta's platform quota.
-  for(let i=0;i<Math.min(12,60-(count?.n||0))&&now()<deadline;i++){
+  const cooldown=await env.DB.prepare("SELECT value FROM settings WHERE key='send_retry_after'").first<{value:string}>();
+  if(Number(cooldown?.value||0)>now())return;
+  for(let i=0;i<12&&now()<deadline;i++){
     const job=await env.DB.prepare("UPDATE jobs SET status='sending',updated=? WHERE id=(SELECT id FROM jobs WHERE status='pending' AND expires>? AND not_before<=unixepoch() AND (parent IS NULL OR parent IN (SELECT id FROM jobs WHERE status='sent')) ORDER BY created,id LIMIT 1) AND status='pending' RETURNING *").bind(now(),now()).first<Job>();
     if(!job)break;
     try{
@@ -101,13 +101,19 @@ async function drainPending(env:AppEnv){
       await env.DB.prepare("UPDATE jobs SET status='sent',detail='Aceito pela API da Meta.',updated=? WHERE id=?").bind(now(),job.id).run();
       await processInputs(env,a,deadline).catch(()=>{});
     }catch(e){
+      if(e instanceof MetaError&&(e.status===429||[4,17,32,613].includes(e.code))){
+        const retry=now()+60;
+        await env.DB.batch([
+          env.DB.prepare("UPDATE jobs SET status='pending',not_before=?,detail='A Meta pediu uma pausa. Nova tentativa agendada.',updated=? WHERE id=?").bind(retry,now(),job.id),
+          env.DB.prepare("INSERT INTO settings(key,value) VALUES('send_retry_after',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(String(retry))
+        ]);break;
+      }
       const known=e instanceof MetaError&&e.status>=400&&e.status<500;
       const status=known?'failed':'uncertain';
       let block='';
       if(job.conversation_id&&job.phase){const c=await env.DB.prepare('SELECT config FROM conversations WHERE id=?').bind(job.conversation_id).first<{config:string}>();const n=c&&JSON.parse(c.config).map.nodes.find((n:any)=>n.id===job.phase);if(n)block=`Bloco ${n.number||n.id} — ${n.mediaType==='audio'?'Áudio':n.mediaType==='video'?'Vídeo':n.mediaType==='image'?'Imagem':n.mediaType==='file'?'Documento':'Mensagem'}: `;}
       const detail=known?(e as Error).message:'A Meta não confirmou o envio dentro do prazo. Confira a conversa no Instagram antes de reenviar.';
       await env.DB.prepare('UPDATE jobs SET status=?,detail=?,updated=? WHERE id=?').bind(status,block+detail,now(),job.id).run();
-      if(e instanceof MetaError&&(e.status===429||[4,17,32,613].includes(e.code)))break;
     }
   }
 }

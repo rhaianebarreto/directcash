@@ -165,7 +165,6 @@ async function handle(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Respo
       try{await graph(env,a,a.id+'/subscribed_apps',{subscribed_fields:['comments','messages','messaging_postbacks']});}catch{return json({error:'Não foi possível ativar os cliques dos botões no Instagram. Confira messaging_postbacks nos webhooks do app e use Verificar conexão. Seu fluxo ainda não foi alterado.'},400);}
     }
     const id=typeof b.id==='string'?b.id:crypto.randomUUID();if(!/^[a-f0-9-]{36}$/.test(id))return json({},400);
-    const count=await env.DB.prepare('SELECT count(*) n FROM rules').first<{n:number}>();if((count?.n||0)>=30&&!b.id)return json({error:'Limite desta edição: 30 automações. Edite ou exclua uma existente.'},400);
     await env.DB.prepare('INSERT INTO rules(id,name,trigger,media_id,keywords,message,link,public_reply,active,created,flow) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,trigger=excluded.trigger,media_id=excluded.media_id,keywords=excluded.keywords,message=excluded.message,link=excluded.link,public_reply=excluded.public_reply,active=excluded.active,flow=excluded.flow').bind(id,r.name,r.trigger,r.media_id,r.keywords,r.message,r.link,r.public_reply,r.active,now(),r.flow||'{}').run();return json({id});
   }
   if(path.startsWith('/api/rules/')&&req.method==='DELETE'){await env.DB.prepare('DELETE FROM rules WHERE id=?').bind(path.split('/').pop()).run();return json({ok:true});}

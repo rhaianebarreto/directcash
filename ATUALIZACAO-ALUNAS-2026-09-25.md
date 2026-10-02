@@ -1,6 +1,6 @@
 # Atualização DirectCA$H — passo a passo para alunas
 
-**Código da atualização: `editor-2026-09-25-r10`**
+**Código da atualização: `editor-2026-10-02`**
 
 Inclui duplicação de blocos, emojis nos botões, espera em horas e Automatizar próximo post.
 
@@ -8,7 +8,7 @@ Inclui duplicação de blocos, emojis nos botões, espera em horas e Automatizar
 
 1. Abra seu repositório do DirectCA$H no GitHub.
 2. Abra o arquivo `.github/workflows/atualizar-directcash.yml` e clique no lápis para editar.
-3. Copie todo o [código de atualização oficial](https://github.com/rhaianebarreto/directcash/blob/editor-2026-09-25-r10/.github/workflows/atualizar-directcash.yml), substitua o conteúdo do seu arquivo e confirme em **Commit changes**.
+3. Copie todo o [código de atualização oficial](https://github.com/rhaianebarreto/directcash/blob/editor-2026-10-02/.github/workflows/atualizar-directcash.yml), substitua o conteúdo do seu arquivo e confirme em **Commit changes**.
 
 Se esse arquivo não existir: **Add file → Create new file**, escreva o nome completo `.github/workflows/atualizar-directcash.yml`, cole o mesmo conteúdo e confirme.
 
@@ -18,12 +18,12 @@ Se você já instalou a revisão `editor-2026-09-25-r2` com o código de atualiz
 
 1. No seu repositório, abra **Actions → Atualizar DirectCA$H → Run workflow**.
 2. Escolha a branch conectada à Cloudflare (geralmente **main**).
-3. No campo do código, coloque **editor-2026-09-25-r10** e confirme **Run workflow**.
+3. No campo do código, coloque **editor-2026-10-02** e confirme **Run workflow**.
 4. Aguarde a execução ficar verde.
 5. Na sua Cloudflare, abra **Workers e Pages → seu painel → Builds** e aguarde o build desse novo commit terminar com sucesso.
 6. Abra o mesmo endereço do seu painel e recarregue.
 
-Para conferir a versão, acrescente `/version.json` ao endereço do painel. Deve aparecer `editor-2026-09-25-r10`.
+Para conferir a versão, acrescente `/version.json` ao endereço do painel. Deve aparecer `editor-2026-10-02`.
 
 Se o build não começar: confira em **Configurações → Builds** se o repositório e a branch são os mesmos usados acima. O comando de implantação desta versão é `npm run deploy`. Uma execução verde no GitHub, sozinha, não confirma a publicação na Cloudflare.
 
@@ -63,3 +63,9 @@ A verificação real depende de a Meta disponibilizar essa informação e das pe
 ## Excluir vários itens
 
 Abra Fluxos ou Automações, marque os itens desejados (ou Selecionar todos os exibidos) e clique em Excluir selecionados. Confira os nomes na confirmação e confirme apenas os itens que deseja apagar. A exclusão é permanente. Os envios ainda pendentes desses itens são cancelados; mensagens já enviadas não são apagadas do Instagram. O backup fica em Configurações.
+
+## Sem limite fixo de 30 itens
+
+Esta versão remove o limite de 30 fluxos e automações salvos por perfil, incluindo importação de backups e exclusão em massa. Os itens existentes são preservados. O limite de tamanho dos arquivos de backup e os limites de uso da infraestrutura continuam valendo.
+
+A fila também deixa de parar por uma contagem local de 60 envios/hora. Quando a Meta informa limite de requisições, o envio recusado permanece na fila e é tentado novamente após uma pausa. Erros com resultado incerto não são reenviados automaticamente. Isso não elimina limites e permissões definidos pela Meta ou pela Cloudflare.

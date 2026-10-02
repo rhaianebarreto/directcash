@@ -5,7 +5,7 @@ function decodeFlowFile(data){
   for(const n of data.map.nodes){if(!n||typeof n.id!=='string'||!['message','carousel','wait','email','follow','tag'].includes(n.type)||typeof n.text!=='string'||!Array.isArray(n.choices)||n.choices.some(c=>!c||typeof c.title!=='string'||typeof c.next!=='string')||(n.parts!==undefined&&!Array.isArray(n.parts))||(n.type==='carousel'&&!Array.isArray(n.cards)))throw Error('Bloco inválido no arquivo.');}
   return [data];
  }
- if(data?.formato!==1||!Array.isArray(data.fluxos)||!data.fluxos.length||data.fluxos.length>30)throw Error('Use um fluxo DirectCA$H ou um pacote de até 30 fluxos.');
+ if(data?.formato!==1||!Array.isArray(data.fluxos)||!data.fluxos.length)throw Error('Use um fluxo DirectCA$H ou um pacote de fluxos.');
  return data.fluxos.map(f=>{
   if(!Array.isArray(f.nodes)||!Array.isArray(f.edges)||f.nodes.length>31)throw Error('Estrutura de fluxo inválida.');
   const start=f.nodes.find(n=>n.kind==='start');
