@@ -16,6 +16,9 @@ for(const [name,class_name]of [['FLOW_SCHEDULER','FlowScheduler'],['FLOW_MEDIA',
 config.migrations??=[];
 const classes=['FlowScheduler','FlowMedia'].filter(c=>!config.migrations.some(m=>(m.new_sqlite_classes||[]).includes(c)));
 if(classes.length){if(config.migrations.some(m=>m.tag==='flow-tools-v1'))throw Error('Migração existente incompatível.');config.migrations.push({tag:'flow-tools-v1',new_sqlite_classes:classes});}
+// Next-post discovery and pending work must continue without an open panel.
+config.triggers??={};
+config.triggers.crons=[...new Set([...(config.triggers.crons||[]),'*/5 * * * *'])];
 config.keep_vars=true;
 writeFileSync(file,JSON.stringify(config,null,2)+'\n');
 console.log('Editor atualizado na configuração. Nome, banco e variáveis da instalação preservados.');

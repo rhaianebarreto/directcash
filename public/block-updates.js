@@ -61,5 +61,5 @@
  updatePreview=function(){previousPreview();const waiting=check.checked;document.querySelector('#load-media').disabled=waiting||form.elements.allPosts.checked;form.elements.allPosts.disabled=waiting;if(waiting)document.querySelector('#selected-post').replaceChildren(el('p','Ao salvar, aguarda o próximo post ou Reel deste perfil.','small muted'));};
  check.onchange=()=>{armedAt=check.checked?Math.floor(Date.now()/1000):undefined;if(check.checked)form.elements.allPosts.checked=false;updatePreview();};
  const previousRow=ruleRow;
- ruleRow=function(rule,map){const row=previousRow(rule,map);if(getFlow(rule).nextPostAt)row.querySelector('h3').after(el('p','Aguardando próximo post','badge'));return row;};
+ ruleRow=function(rule,map){const row=previousRow(rule,map);if(getFlow(rule).nextPostAt){row.querySelector('h3').after(el('p',rule.active?'Aguardando próximo post · verificação a cada 5 minutos':'Próximo post · ative a automação para vincular','badge'));if(rule.active)row.querySelector('.rule-actions').append(button('Verificar publicação',()=>run(async()=>{await post('next-post/check');await refresh();const current=rules.find(r=>r.id===rule.id);toast(current&&!getFlow(current).nextPostAt?'Publicação vinculada.':'Ainda aguardando uma publicação nova no Instagram.');}),'outline'));}return row;};
 })();

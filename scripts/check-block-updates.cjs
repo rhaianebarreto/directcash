@@ -76,11 +76,16 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
   await page.evaluate(()=>{rules=[{id:'11111111-1111-1111-1111-111111111111',name:'Um',trigger:'dm',keywords:'oi',created:1,active:0,flow:'{}'},{id:'22222222-2222-2222-2222-222222222222',name:'Dois',trigger:'dm',keywords:'oi',created:1,active:0,flow:'{}'}];location.hash='automations';route();renderRules();});
   await page.getByRole('checkbox',{name:'Selecionar Um',exact:true}).check();await page.locator('[data-page="automations"]').getByRole('button',{name:'Excluir selecionados',exact:true}).click();
   await page.locator('dialog[open]').getByRole('button',{name:'Cancelar',exact:true}).click();assert.deepEqual(deletedIds,[]);
-  await page.locator('[data-page="automations"]').getByRole('button',{name:'Excluir selecionados',exact:true}).click();await page.locator('dialog[open]').getByRole('button',{name:'Confirmar exclusão',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('dialog[open]'));assert.deepEqual(deletedIds,['11111111-1111-1111-1111-111111111111']);
+  await page.locator('[data-page="automations"]').getByRole('button',{name:'Excluir selecionados',exact:true}).click();await page.locator('dialog[open]').getByRole('button',{name:'Confirmar exclusão',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('dialog[open]'));assert.deepEqual(deletedIds,['11111111-1111-1111-1111-111111111111']);await page.getByText('1 item(ns) excluído(s).',{exact:true}).waitFor();
   await page.evaluate(()=>{rules=[1,2].map(i=>({id:String(i).repeat(8)+'-'+String(i).repeat(4)+'-'+String(i).repeat(4)+'-'+String(i).repeat(4)+'-'+String(i).repeat(12),name:'Fluxo '+i,trigger:'dm',keywords:'oi',created:1,active:0,flow:JSON.stringify({version:1,map:{start:'a',nodes:[]}})}));location.hash='flows';route();renderFlows();});
   await page.locator('[data-page="flows"]').getByRole('checkbox',{name:'Selecionar todos os exibidos',exact:true}).check();assert.equal(await page.locator('[data-page="flows"] .bulk-rule-check:checked').count(),2);
   await page.locator('[data-page="flows"]').getByRole('button',{name:'Limpar seleção',exact:true}).click();assert.equal(await page.locator('[data-page="flows"] .bulk-rule-check:checked').count(),0);
   assert.equal(await page.locator('[data-page="flows"]').getByRole('button',{name:'Exportar backup',exact:true}).count(),0);
+  const pendingRule={id:'33333333-3333-3333-3333-333333333333',name:'Próximo post',trigger:'comment',keywords:'quero',created:1,active:1,media_id:'',flow:JSON.stringify({version:1,nextPostAt:100,allPosts:false})};
+  let checkedNext=false;await page.route('**/api/next-post/check',route=>{checkedNext=true;return route.fulfill({json:{ok:true}});});
+  await page.route('**/api/rules',route=>route.fulfill({json:[{...pendingRule,media_id:'123',flow:JSON.stringify({version:1,allPosts:false})}]}));
+  await page.evaluate(r=>{rules=[r];location.hash='automations';route();renderRules();},pendingRule);
+  await page.getByRole('button',{name:'Verificar publicação',exact:true}).click();await page.waitForFunction(()=>rules[0]?.media_id==='123');assert.equal(checkedNext,true);assert.equal(await page.getByRole('button',{name:'Verificar publicação',exact:true}).count(),0);
   assert.deepEqual(errors,[]);console.log('PASS: duplication, independent settings, emoji controls, hours, next-post controls, mobile and no page errors');
  }finally{await browser?.close();await new Promise(r=>server.close(r));}
 })().catch(e=>{console.error(e);process.exitCode=1;});

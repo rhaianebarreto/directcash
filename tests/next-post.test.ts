@@ -4,7 +4,7 @@ import {firstPostAfter} from '../src/next-post';
 import {validateFlow} from '../src/flow';
 import {validateMap} from '../src/map';
 import {validateRule,seal} from '../src/core';
-import {bindNextPosts,now,type AppEnv} from '../src/meta';
+import {bindNextPosts,ingest,now,type AppEnv} from '../src/meta';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 import {readFileSync} from 'node:fs';
 
@@ -36,5 +36,18 @@ test('binding persists once, is scoped to the account and respects concurrent ed
   await env.DB.prepare('UPDATE rules SET flow=? WHERE id=?').bind(flow,'r').run();
   globalThis.fetch=async()=>{await env.DB.prepare('UPDATE rules SET flow=?,media_id=? WHERE id=?').bind(saved.flow,'99','r').run();return Response.json({data:[item('40',at+40)]});};
   await bindNextPosts(env,a);assert.equal((await env.DB.prepare('SELECT media_id FROM rules WHERE id=?').bind('r').first<any>()).media_id,'99');
+  // A temporary API failure must not acknowledge a comment that could not be matched.
+  await env.DB.prepare('UPDATE rules SET flow=?,media_id=? WHERE id=?').bind(flow,'','r').run();
+  await env.DB.prepare('INSERT INTO account VALUES(?,?,?,?,?)').bind(a.id,a.username,a.token,a.expires,a.refreshed).run();
+  env.LICENSE_ENFORCEMENT='disabled';
+  const payload={object:'instagram',entry:[{id:a.id,time:now(),changes:[{field:'comments',value:{id:'comment1',text:'quero',from:{id:'456'},media:{id:'20'}}}]}]};
+  globalThis.fetch=async()=>Response.json({error:{message:'Temporary error',code:2}},{status:503});
+  await assert.rejects(()=>ingest(env,payload));
+  assert.equal((await env.DB.prepare('SELECT media_id FROM rules WHERE id=?').bind('r').first<any>()).media_id,'');
+  globalThis.fetch=async()=>Response.json({data:[item('20',at+20),item('10',at-1)]});
+  await ingest(env,payload);await ingest(env,payload);
+  assert.equal((await env.DB.prepare('SELECT media_id FROM rules WHERE id=?').bind('r').first<any>()).media_id,'20');
+  assert.equal((await env.DB.prepare('SELECT count(*) n FROM flow_inputs').first<any>()).n,1);
+
  }finally{globalThis.fetch=old;await mf.dispose();}
 });

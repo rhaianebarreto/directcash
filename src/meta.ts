@@ -37,7 +37,7 @@ export async function bindNextPosts(env:AppEnv,a:Account){
    // A concurrent save, pause or webhook must never overwrite a newer selection.
    await env.DB.prepare('UPDATE rules SET media_id=?,flow=? WHERE id=? AND flow=? AND active=1').bind(id,JSON.stringify(flow),rule.id,rule.flow).run();
   }
- }catch(error){console.error('next-post binding failed',error instanceof Error?error.message:'unknown error');}
+ }catch(error){console.error(JSON.stringify({event:'next_post_lookup_failed'}));throw error;}
 }
 export async function ingest(env:AppEnv, payload:{object?:string;entry?:Entry[]}) {
   if(payload.object!=='instagram')return;
@@ -93,7 +93,7 @@ async function drainPending(env:AppEnv){
   const cooldown=await env.DB.prepare("SELECT value FROM settings WHERE key='send_retry_after'").first<{value:string}>();
   if(Number(cooldown?.value||0)>now())return;
   for(let i=0;i<12&&now()<deadline;i++){
-    const job=await env.DB.prepare("UPDATE jobs SET status='sending',updated=? WHERE id=(SELECT id FROM jobs WHERE status='pending' AND expires>? AND not_before<=unixepoch() AND (parent IS NULL OR parent IN (SELECT id FROM jobs WHERE status='sent')) ORDER BY created,id LIMIT 1) AND status='pending' RETURNING *").bind(now(),now()).first<Job>();
+    const job=await env.DB.prepare("UPDATE jobs SET status='sending',updated=? WHERE id=(SELECT id FROM jobs WHERE status='pending' AND expires>? AND not_before<=unixepoch() AND (parent IS NULL OR EXISTS (SELECT 1 FROM jobs AS parent_job WHERE parent_job.id=jobs.parent AND parent_job.status='sent')) ORDER BY created,id LIMIT 1) AND status='pending' RETURNING *").bind(now(),now()).first<Job>();
     if(!job)break;
     try{
       if(job.kind==='public')await graph(env,a,encodeURIComponent(job.recipient)+'/replies',{message:job.text});

@@ -1,3 +1,4 @@
+import {platformError} from './platform-errors';
 import {deleteRules} from './bulk-rules';
 import {exportRules,restoreRules} from './backups';
 import {BlockError} from './map';
@@ -6,7 +7,7 @@ import {mediaFormat} from './media-format';
 
 import {profileEnv,profiles,scoped,registerProfile,publicProfiles} from './profiles';
 import {boundedText,digest,equal,seal,unseal,signatureValid,validateRule} from './core';
-import {account,settings,now,meta,graph,ingest,drain,maintenance,log,type AppEnv,type Settings} from './meta';
+import {account,settings,now,meta,graph,ingest,drain,maintenance,bindNextPosts,log,type AppEnv,type Settings} from './meta';
 import {licenseFor,activateLicense,LicenseServiceError} from './license';
 import {readFlow,hasChannel} from './flow';
 import {queueInput} from './conversations';
@@ -17,7 +18,7 @@ const profileCookie=(id:string)=>`dc_profile=${id}; Path=/; HttpOnly; SameSite=L
 const body=async(req:Request)=>JSON.parse(await boundedText(req,65536)) as Record<string,unknown>;
 function secure(response:Response){const r=new Response(response.body,response);r.headers.set('X-Content-Type-Options','nosniff');r.headers.set('Referrer-Policy','no-referrer');r.headers.set('X-Frame-Options','DENY');r.headers.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data:; connect-src 'self'; media-src 'self' https: blob:; frame-ancestors 'none'; form-action 'self'; base-uri 'none'");return r;}
 export default {
-  async fetch(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Response>{try{const url=new URL(req.url);if(url.pathname!=='/webhook'){let id=req.headers.get('Cookie')?.match(/(?:^|; )dc_profile=([0-9]+)/)?.[1];if(url.pathname==='/oauth/callback'){const o=await env.DB.prepare('SELECT profile_id FROM oauth WHERE id=?').bind(await digest(url.searchParams.get('state')||'')).first<{profile_id:string}>();if(o)id=o.profile_id;}env=await profileEnv(env,id);}return secure(await handle(req,env,ctx));}catch(e){console.error(JSON.stringify({event:'request_failed',type:e instanceof Error?e.name:'unknown'}));return secure(json({error:'Não foi possível concluir. Confira a configuração e tente novamente.'},500));}},
+  async fetch(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Response>{try{const url=new URL(req.url);if(url.pathname!=='/webhook'){let id=req.headers.get('Cookie')?.match(/(?:^|; )dc_profile=([0-9]+)/)?.[1];if(url.pathname==='/oauth/callback'){const o=await env.DB.prepare('SELECT profile_id FROM oauth WHERE id=?').bind(await digest(url.searchParams.get('state')||'')).first<{profile_id:string}>();if(o)id=o.profile_id;}env=await profileEnv(env,id);}return secure(await handle(req,env,ctx));}catch(e){console.error(JSON.stringify({event:'request_failed',type:e instanceof Error?e.name:'unknown'}));const limit=platformError(e);return secure(json(limit||{error:'Não foi possível concluir. Confira a configuração e tente novamente.'},limit?503:500));}},
   async scheduled(_event:ScheduledController,env:AppEnv,ctx:ExecutionContext){ctx.waitUntil((async()=>{const all=(await profiles(env)).results;if(!all.length)await maintenance(env);for(const p of all)await maintenance(scoped(env,p));})().catch(()=>console.error(JSON.stringify({event:'maintenance_failed'}))));}
 } satisfies ExportedHandler<AppEnv>;
 async function handle(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Response>{
@@ -137,6 +138,11 @@ async function handle(req:Request,env:AppEnv,ctx:ExecutionContext):Promise<Respo
   if(path==='/api/rules-backup'&&req.method==='GET')return json(exportRules((await env.DB.prepare('SELECT * FROM rules ORDER BY created DESC').all<any>()).results));
   if(path==='/api/rules-backup'&&req.method==='POST'){
     try{return json(await restoreRules(env,JSON.parse(await boundedText(req,4*1024*1024))));}catch(e){return json({error:e instanceof Error?e.message:'Não foi possível importar o backup.'},400);}
+  }
+  if(path==='/api/next-post/check'&&req.method==='POST'){
+    const a=await account(env);if(!a)return json({error:'Conecte o Instagram deste perfil em Configuração.'},400);
+    try{await bindNextPosts(env,a);return json({ok:true});}
+    catch{return json({error:'Não foi possível consultar as publicações no Instagram agora. A automação continua aguardando. Use Verificar conexão em Configuração e tente novamente.'},502);}
   }
   if(path==='/api/rules'&&req.method==='GET')return json((await env.DB.prepare('SELECT * FROM rules ORDER BY created DESC').all()).results);
   if(path==='/api/manual-dispatch'&&req.method==='POST'){

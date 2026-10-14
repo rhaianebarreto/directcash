@@ -1,0 +1,60 @@
+name: Atualizar DirectCA$H
+on:
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: Deixe recomendado para atualizar sem digitar código
+        required: true
+        default: recomendado
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: atualizar-directcash-${{ github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Baixar versão aprovada
+        env:
+          RELEASE: ${{ inputs.versao }}
+        run: |
+          if [ "$RELEASE" = "recomendado" ]; then
+            curl --fail --location --retry 2 "https://raw.githubusercontent.com/rhaianebarreto/directcash/main/public/updates.json" -o "$RUNNER_TEMP/directcash-release.json"
+            RELEASE=$(node -e 'const fs=require("node:fs");const m=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(typeof m.recommended!=="string")throw Error("Versão recomendada indisponível");process.stdout.write(m.recommended)' "$RUNNER_TEMP/directcash-release.json")
+          fi
+          [[ "$RELEASE" =~ ^editor-[0-9]{4}-[0-9]{2}-[0-9]{2}(-r[1-9][0-9]*)?$ ]] || { echo 'Código de atualização inválido'; exit 1; }
+          curl --fail --location --retry 2 "https://github.com/rhaianebarreto/directcash/archive/refs/tags/$RELEASE.tar.gz" -o "$RUNNER_TEMP/directcash.tar.gz"
+          mkdir -p "$RUNNER_TEMP/directcash-update"
+          tar -xzf "$RUNNER_TEMP/directcash.tar.gz" -C "$RUNNER_TEMP/directcash-update" --strip-components=1
+      - name: Atualizar preservando a instalação
+        run: |
+          test -f wrangler.jsonc
+          for folder in src public scripts migrations; do mkdir -p "$folder"; cp -R "$RUNNER_TEMP/directcash-update/$folder/." "$folder/"; done
+          cp "$RUNNER_TEMP/directcash-update/package.json" "$RUNNER_TEMP/directcash-update/package-lock.json" .
+          node scripts/update-config.mjs
+      - name: Confirmar remoção do limite antigo
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const source=readFileSync('src/index.ts','utf8');
+          if(source.includes('Limite desta edição: 30 automações'))throw Error('Esta versão ainda contém o limite antigo. Use editor-2026-10-02 ou uma versão posterior.');
+          console.log('Verificado: servidor sem a trava antiga de 30 automações.');
+          NODE
+      - name: Salvar atualização
+        run: |
+          git config user.name 'DirectCA$H Updates'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src public scripts migrations package.json package-lock.json wrangler.jsonc
+          if git diff --cached --quiet; then echo 'Esta instalação já usa esta versão.'; exit 0; fi
+          git commit -m 'Atualizar editor visual do DirectCA$H'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          echo 'Código atualizado. Aguarde também a implantação na Cloudflare; este resultado não confirma a publicação do painel.' >> "$GITHUB_STEP_SUMMARY"
+

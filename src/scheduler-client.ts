@@ -3,7 +3,7 @@ import {licenseFor} from './license';
 export async function nextWake(env:AppEnv):Promise<number|null>{
  const cooldown=await env.DB.prepare("SELECT value FROM settings WHERE key='send_retry_after'").first<{value:string}>();
  const rows=await env.DB.prepare(`SELECT min(wake) wake FROM (
-  SELECT max(not_before,?) wake FROM jobs WHERE status='pending' AND expires>? AND rule_id IN (SELECT id FROM rules WHERE active=1) AND (parent IS NULL OR parent IN (SELECT id FROM jobs WHERE status='sent'))
+  SELECT max(not_before,?) wake FROM jobs WHERE status='pending' AND expires>? AND rule_id IN (SELECT id FROM rules WHERE active=1) AND (parent IS NULL OR EXISTS (SELECT 1 FROM jobs AS parent_job WHERE parent_job.id=jobs.parent AND parent_job.status='sent'))
   UNION ALL SELECT CAST(json_extract(config,'$.wake') AS INTEGER) wake FROM conversations WHERE stage='wait' AND expires>? AND rule_id IN (SELECT id FROM rules WHERE active=1)
   UNION ALL SELECT updated+181 wake FROM jobs WHERE status='sending' AND expires>?
   UNION ALL SELECT ? wake FROM flow_inputs WHERE status='pending' AND expires>?
