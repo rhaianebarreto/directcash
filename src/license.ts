@@ -28,7 +28,7 @@ export async function remoteLicense(env:AppEnv,code:string,accountId:string,acti
 }
 export async function cacheLicense(env:AppEnv,license:License){await env.DB.prepare("INSERT INTO settings(key,value) VALUES('license-cache',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify({license,until:Math.min(now()+300,license.expires??Infinity)})).run();}
 export async function activateLicense(env:AppEnv,code:string,accountId:string){
-  if(!/^DC-[A-F0-9]{32}$/.test(code))return null;
+  if(!/^(?:DC|PH)-[A-F0-9]{32}$/.test(code))return null;
   const license=await remoteLicense(env,code,accountId,true);if(!license)return null;
   try{await env.DB.batch([env.DB.prepare("INSERT INTO settings(key,value) VALUES('license-online',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(await seal(code,env.APP_KEY)),env.DB.prepare("DELETE FROM settings WHERE key IN ('license','license-cache')")]);
   await cacheLicense(env,license);}catch{throw new LicenseServiceError('LIC-SAVE','A licença foi aceita pelo servidor, mas não foi possível salvá-la nesta instalação. Confira o banco DB e a configuração APP_KEY, sem trocar a chave existente.');}return license;

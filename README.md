@@ -10,6 +10,8 @@ Crie suas contas GitHub e Cloudflare. No instalador, informe ADMIN_PASSWORD e AP
 Abra o endereço workers.dev, entre com sua senha e siga Configuração. Use o ID e a chave do **app do Instagram**, cadastre as URLs da sua instalação na Meta, configure as permissões e webhooks e conclua a autorização. Contas testadoras precisam aceitar o convite. Publicação e níveis de acesso da Meta continuam aplicáveis.
 
 ## Licença
+Aceita a licença individual DirectCA$H (`DC-...`) e a licença de pacote PostHub (`PH-...`). Na PostHub, o servidor central mantém um vínculo de conta para o DirectCA$H, independente das outras ferramentas, e uma validade única para o pacote. Use a mesma chave recebida no campo de licença.
+
 A exigência vem habilitada. Ative a licença recebida após conectar o Instagram. Licenças anuais começam na primeira ativação; reconectar não reinicia o prazo. O cartão exibe titular, e-mail, vencimento e perfis vinculados ao limite. Verificações têm cache de até cinco minutos. O administrador central nunca deve compartilhar ADMIN_SECRET com alunas.
 
 ## Atualizações
